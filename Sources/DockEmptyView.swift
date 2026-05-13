@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct DockEmptyView: View {
@@ -15,27 +14,8 @@ struct DockEmptyView: View {
             ))
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
-            VStack(spacing: 8) {
-                Button {
-                    openDockDocs()
-                } label: {
-                    Label(
-                        String(localized: "dock.empty.openDocs", defaultValue: "Docs"),
-                        systemImage: "questionmark.circle"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help(String(localized: "dock.empty.openDocs.help", defaultValue: "Open the Dock documentation"))
-            }
-            .padding(.top, 4)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func openDockDocs() {
-        guard let url = URL(string: "https://github.com/aflekkas/taskmux/blob/main/docs/dock.md") else { return }
-        NSWorkspace.shared.open(url)
     }
 }

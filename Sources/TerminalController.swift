@@ -129,7 +129,6 @@ class TerminalController {
         "focus_pane",
         "focus_surface_by_panel",
         "focus_webview",
-        "focus_notification",
         "activate_app",
         "debug_right_sidebar_focus",
     ]
@@ -2276,9 +2275,6 @@ class TerminalController {
 
         case "reset_empty_panel_count":
             return resetEmptyPanelCount()
-
-        case "focus_notification":
-            return focusFromNotification(args)
 
         case "debug_right_sidebar_focus":
             return debugRightSidebarFocus(args)
@@ -12251,16 +12247,6 @@ class TerminalController {
         return resp == "OK" ? .ok([:]) : .err(code: "internal_error", message: resp, data: nil)
     }
 
-    private func v2DebugFocusNotification(params: [String: Any]) -> V2CallResult {
-        guard let wsId = v2String(params, "workspace_id") else {
-            return .err(code: "invalid_params", message: "Missing workspace_id", data: nil)
-        }
-        let surfaceId = v2String(params, "surface_id")
-        let args = surfaceId != nil ? "\(wsId) \(surfaceId!)" : wsId
-        let resp = focusFromNotification(args)
-        return resp == "OK" ? .ok([:]) : .err(code: "internal_error", message: resp, data: nil)
-    }
-
     private func v2DebugFlashCount(params: [String: Any]) -> V2CallResult {
         guard let surfaceId = v2String(params, "surface_id") else {
             return .err(code: "invalid_params", message: "Missing surface_id", data: nil)
@@ -12523,7 +12509,6 @@ class TerminalController {
 #if DEBUG
         text += """
 
-          focus_notification <workspace|idx> [surface|idx] - Focus via notification flow
           flash_count <id|idx>            - Read flash count for a panel
           reset_flash_counts              - Reset flash counters
           screenshot [label]              - Capture window screenshot
@@ -13692,31 +13677,6 @@ class TerminalController {
     }
 
 #if DEBUG
-    private func focusFromNotification(_ args: String) -> String {
-        guard let tabManager else { return "ERROR: TabManager not available" }
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = trimmed.split(separator: " ", maxSplits: 1).map(String.init)
-        let tabArg = parts.first ?? ""
-        let surfaceArg = parts.count > 1 ? parts[1] : ""
-
-        var result = "OK"
-        v2MainSync {
-            guard let tab = resolveTab(from: tabArg, tabManager: tabManager) else {
-                result = "ERROR: Tab not found"
-                return
-            }
-            let surfaceId = surfaceArg.isEmpty ? nil : resolveSurfaceId(from: surfaceArg, tab: tab)
-            if !surfaceArg.isEmpty && surfaceId == nil {
-                result = "ERROR: Surface not found"
-                return
-            }
-            if !tabManager.focusTabFromNotification(tab.id, surfaceId: surfaceId) {
-                result = "ERROR: Focus failed"
-            }
-        }
-        return result
-    }
-
     private func flashCount(_ args: String) -> String {
         guard let tabManager else { return "ERROR: TabManager not available" }
         let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
