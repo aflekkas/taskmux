@@ -538,11 +538,6 @@ struct cmuxApp: App {
         CommandGroup(replacing: .help) {
             EmptyView()
         }
-        CommandGroup(after: .windowArrangement) {
-            Button(String(localized: "menu.window.taskManager", defaultValue: "Task Manager...")) {
-                TaskManagerWindowController.shared.show()
-            }
-        }
         CommandGroup(after: .toolbar) {
             splitCommandButton(title: String(localized: "menu.view.toggleLeftSidebar", defaultValue: "Toggle Left Sidebar"), shortcut: menuShortcut(for: .toggleSidebar)) {
                 if AppDelegate.shared?.toggleSidebarInActiveMainWindow() != true {
@@ -1001,7 +996,6 @@ private let cmuxAuxiliaryWindowIdentifiers: Set<String> = [
     "cmux.pdfPreviewChromeDebug",
     "cmux.splitButtonLayoutDebug",
     "cmux.tabBarBackdropLab",
-    "cmux.taskManager",
     "cmux.aboutTitlebarDebug",
     "cmux.debugWindowControls",
     "cmux.browserImportHintDebug",

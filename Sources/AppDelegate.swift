@@ -7153,9 +7153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             onShowMainWindow: { [weak self] in
                 self?.showMainWindowFromMenuBar()
             },
-            onOpenTaskManager: {
-                TaskManagerWindowController.shared.show()
-            },
             onOpenPreferences: { [weak self] in
                 self?.openPreferencesWindow(debugSource: "menuBarExtra")
             },
@@ -7301,10 +7298,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func refreshMenuBarExtraForDebug() {
         menuBarExtraController?.refreshForDebugControls()
-    }
-
-    func openTaskManagerWindow() {
-        TaskManagerWindowController.shared.show()
     }
 
     func captureMainWindowVisibilityRestoreTargetsForApplicationHide() {

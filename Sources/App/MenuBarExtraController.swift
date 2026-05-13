@@ -7,7 +7,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let menu = NSMenu(title: "cmux")
     private let onShowGlobalSearch: (NSStatusBarButton, (() -> Void)?) -> Void
     private let onShowMainWindow: () -> Void
-    private let onOpenTaskManager: () -> Void
     private let onOpenPreferences: () -> Void
     private let onQuitApp: () -> Void
     private let buildHintTitle: String?
@@ -16,20 +15,17 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let buildHintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let globalSearchItem = NSMenuItem(title: String(localized: "statusMenu.searchAllWindows", defaultValue: "Search All Windows..."), action: nil, keyEquivalent: "")
     private let showMainWindowItem = NSMenuItem(title: String(localized: "statusMenu.showCmux", defaultValue: "Show cmux"), action: nil, keyEquivalent: "")
-    private let taskManagerItem = NSMenuItem(title: String(localized: "statusMenu.taskManager", defaultValue: "Task Manager..."), action: nil, keyEquivalent: "")
     private let preferencesItem = NSMenuItem(title: String(localized: "menu.preferences", defaultValue: "Preferences…"), action: nil, keyEquivalent: "")
     private let quitItem = NSMenuItem(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux"), action: nil, keyEquivalent: "")
 
     init(
         onShowGlobalSearch: @escaping (NSStatusBarButton, (() -> Void)?) -> Void,
         onShowMainWindow: @escaping () -> Void,
-        onOpenTaskManager: @escaping () -> Void,
         onOpenPreferences: @escaping () -> Void,
         onQuitApp: @escaping () -> Void
     ) {
         self.onShowGlobalSearch = onShowGlobalSearch
         self.onShowMainWindow = onShowMainWindow
-        self.onOpenTaskManager = onOpenTaskManager
         self.onOpenPreferences = onOpenPreferences
         self.onQuitApp = onQuitApp
         self.buildHintTitle = MenuBarBuildHintFormatter.menuTitle()
@@ -71,10 +67,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         showMainWindowItem.target = self
         showMainWindowItem.action = #selector(showMainWindowAction)
         menu.addItem(showMainWindowItem)
-
-        taskManagerItem.target = self
-        taskManagerItem.action = #selector(taskManagerAction)
-        menu.addItem(taskManagerItem)
 
         preferencesItem.target = self
         preferencesItem.action = #selector(preferencesAction)
@@ -152,10 +144,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
 
     @objc private func showMainWindowAction() {
         onShowMainWindow()
-    }
-
-    @objc private func taskManagerAction() {
-        onOpenTaskManager()
     }
 
     @objc private func preferencesAction() {
