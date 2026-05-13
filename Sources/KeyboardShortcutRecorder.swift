@@ -171,7 +171,7 @@ private struct ShortcutRecorderButton: NSViewRepresentable {
 final class ShortcutRecorderNSButton: NSButton {
     private static weak var activeRecorder: ShortcutRecorderNSButton?
 
-    var shortcut: StoredShortcut = KeyboardShortcutSettings.showNotificationsDefault {
+    var shortcut: StoredShortcut = .unbound {
         didSet {
             if shortcut != oldValue {
                 hasPendingRejection = false

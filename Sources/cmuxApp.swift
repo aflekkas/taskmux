@@ -747,26 +747,10 @@ struct cmuxApp: App {
         return KeyboardShortcutSettings.menuShortcut(for: action)
     }
 
-    private var notificationMenuSnapshot: NotificationMenuSnapshot {
-        NotificationMenuSnapshotBuilder.make(notifications: notificationStore.notifications)
-    }
-
     var activeTabManager: TabManager {
         AppDelegate.shared?.activeTabManagerForCommands(
             preferredWindow: NSApp.keyWindow ?? NSApp.mainWindow
         ) ?? tabManager
-    }
-    private func notificationMenuItemTitle(for notification: TerminalNotification) -> String {
-        let tabTitle = appDelegate.tabTitle(for: notification.tabId)
-        return MenuBarNotificationLineFormatter.menuTitle(notification: notification, tabTitle: tabTitle)
-    }
-
-    private func openNotificationFromMainMenu(_ notification: TerminalNotification) {
-        _ = appDelegate.openNotification(
-            tabId: notification.tabId,
-            surfaceId: notification.surfaceId,
-            notificationId: notification.id
-        )
     }
 
     private func performSplitFromMenu(direction: SplitDirection) {
@@ -856,26 +840,6 @@ struct cmuxApp: App {
         closeWorkspaceIds(workspaceIds, in: manager, allowPinned: true)
     }
 
-    private func selectedWorkspaceCanMarkRead(in manager: TabManager) -> Bool {
-        guard let workspaceId = manager.selectedWorkspace?.id else { return false }
-        return notificationStore.canMarkWorkspaceRead(forTabIds: [workspaceId])
-    }
-
-    private func selectedWorkspaceCanMarkUnread(in manager: TabManager) -> Bool {
-        guard let workspaceId = manager.selectedWorkspace?.id else { return false }
-        return notificationStore.canMarkWorkspaceUnread(forTabIds: [workspaceId])
-    }
-
-    private func markSelectedWorkspaceRead(in manager: TabManager) {
-        guard let workspaceId = manager.selectedWorkspace?.id else { return }
-        notificationStore.markRead(forTabId: workspaceId)
-    }
-
-    private func markSelectedWorkspaceUnread(in manager: TabManager) {
-        guard let workspaceId = manager.selectedWorkspace?.id else { return }
-        notificationStore.markUnread(forTabId: workspaceId)
-    }
-
     @ViewBuilder
     private func workspaceCommandMenuContent(manager: TabManager) -> some View {
         let workspace = manager.selectedWorkspace
@@ -962,17 +926,6 @@ struct cmuxApp: App {
         }
         .disabled(workspaceIndex == nil || workspaceIndex == 0)
 
-        Divider()
-
-        Button(String(localized: "contextMenu.markWorkspaceRead", defaultValue: "Mark Workspace as Read")) {
-            markSelectedWorkspaceRead(in: manager)
-        }
-        .disabled(!selectedWorkspaceCanMarkRead(in: manager))
-
-        Button(String(localized: "contextMenu.markWorkspaceUnread", defaultValue: "Mark Workspace as Unread")) {
-            markSelectedWorkspaceUnread(in: manager)
-        }
-        .disabled(!selectedWorkspaceCanMarkUnread(in: manager))
     }
 
     @ViewBuilder
@@ -1000,10 +953,6 @@ struct cmuxApp: App {
 
     private func closeTabOrWindow() {
         activeTabManager.closeCurrentTabWithConfirmation()
-    }
-
-    private func showNotificationsPopover() {
-        AppDelegate.shared?.toggleNotificationsPopover(animated: false)
     }
 
 #if DEBUG
