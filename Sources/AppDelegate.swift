@@ -7126,16 +7126,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    func isCmuxCLIInstalledInPATH() -> Bool {
-        false
-    }
-
-    @objc func installCmuxCLIInPath(_ sender: Any?) {
-    }
-
-    @objc func uninstallCmuxCLIInPath(_ sender: Any?) {
-    }
-
     @objc func restartSocketListener(_ sender: Any?) {
         guard tabManager != nil else {
             NSSound.beep()

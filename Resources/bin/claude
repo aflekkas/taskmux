@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-echo "cmux no longer bundles a Claude wrapper. Run claude directly from your PATH." >&2
-exit 127

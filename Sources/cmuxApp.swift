@@ -4827,7 +4827,7 @@ struct SettingsView: View {
     private let pickerColumnWidth: CGFloat = 196
     private let notificationSoundControlWidth: CGFloat = 280
     private let shortcutChordsDocsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")!
-    private let settingsJSONDocsURL = URL(string: "https://github.com/aflekkas/taskmux/blob/main/docs/cli-contract.md")!
+    private let settingsJSONDocsURL = URL(string: "https://github.com/aflekkas/taskmux#readme")!
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("selectedSettingsSection") private var selectedSettingsSectionRaw = SettingsNavigationTarget.account.rawValue
     @State private var highlightedSearchAnchorID: String?

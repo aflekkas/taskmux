@@ -22,10 +22,8 @@ extension cmuxApp {
         helpResourceButton(.gettingStarted)
         helpResourceButton(.concepts)
         helpResourceButton(.configuration)
-        helpResourceButton(.customCommands)
         helpResourceButton(.dock)
         helpResourceButton(.keyboardShortcuts)
-        helpResourceButton(.apiReference)
         helpResourceButton(.browserAutomation)
     }
 
