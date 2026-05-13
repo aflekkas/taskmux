@@ -308,9 +308,6 @@ final class CmuxSettingsFileStore {
         if let terminalSection = root["terminal"] as? [String: Any] {
             parseTerminalSection(terminalSection, sourcePath: sourcePath, snapshot: &snapshot)
         }
-        if let notificationsSection = root["notifications"] as? [String: Any] {
-            parseNotificationsSection(notificationsSection, sourcePath: sourcePath, snapshot: &snapshot)
-        }
         if let sidebarSection = root["sidebar"] as? [String: Any] {
             parseSidebarSection(sidebarSection, sourcePath: sourcePath, snapshot: &snapshot)
         }
@@ -409,16 +406,6 @@ final class CmuxSettingsFileStore {
         }
     }
 
-    private func parseNotificationsSection(
-        _ section: [String: Any],
-        sourcePath: String,
-        snapshot: inout ResolvedSettingsSnapshot
-    ) {
-        if let value = jsonBool(section["showInMenuBar"]) {
-            snapshot.managedUserDefaults[MenuBarExtraSettings.showInMenuBarKey] = .bool(value)
-        }
-    }
-
     private func parseTerminalSection(
         _ section: [String: Any],
         sourcePath: String,
@@ -452,9 +439,6 @@ final class CmuxSettingsFileStore {
             default:
                 logInvalid("sidebar.branchLayout", sourcePath: sourcePath)
             }
-        }
-        if let value = jsonBool(section["showNotificationMessage"]) {
-            snapshot.managedUserDefaults[SidebarWorkspaceDetailSettings.showNotificationMessageKey] = .bool(value)
         }
         if let value = jsonBool(section["showBranchDirectory"]) { snapshot.managedUserDefaults["sidebarShowBranchDirectory"] = .bool(value) }
         if let value = jsonBool(section["showPullRequests"]) { snapshot.managedUserDefaults["sidebarShowPullRequest"] = .bool(value) }
@@ -505,14 +489,6 @@ final class CmuxSettingsFileStore {
                 sourcePath: sourcePath
             ) else { return }
             snapshot.managedUserDefaults["sidebarSelectionColorHex"] = .nullableString(value)
-        }
-        if section.keys.contains("notificationBadgeColor") {
-            guard let value = parseNullableHex(
-                section["notificationBadgeColor"],
-                path: "workspaceColors.notificationBadgeColor",
-                sourcePath: sourcePath
-            ) else { return }
-            snapshot.managedUserDefaults["sidebarNotificationBadgeColorHex"] = .nullableString(value)
         }
         if section.keys.contains("colors") {
             guard let rawColors = section["colors"] as? [String: Any] else {

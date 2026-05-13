@@ -12,7 +12,7 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let onQuitApp: () -> Void
     private let buildHintTitle: String?
 
-    private let stateHintItem = NSMenuItem(title: String(localized: "statusMenu.noUnread", defaultValue: "No unread notifications"), action: nil, keyEquivalent: "")
+    private let stateHintItem = NSMenuItem(title: String(localized: "statusMenu.ready", defaultValue: "Ready"), action: nil, keyEquivalent: "")
     private let buildHintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let globalSearchItem = NSMenuItem(title: String(localized: "statusMenu.searchAllWindows", defaultValue: "Search All Windows..."), action: nil, keyEquivalent: "")
     private let showMainWindowItem = NSMenuItem(title: String(localized: "statusMenu.showCmux", defaultValue: "Show cmux"), action: nil, keyEquivalent: "")

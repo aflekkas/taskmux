@@ -4729,9 +4729,6 @@ func openCmuxSettingsFileInEditor() {
 
 struct SettingsView: View {
     private let pickerColumnWidth: CGFloat = 196
-    private let notificationSoundControlWidth: CGFloat = 280
-    private let shortcutChordsDocsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")!
-    private let settingsJSONDocsURL = URL(string: "https://github.com/aflekkas/taskmux#readme")!
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("selectedSettingsSection") private var selectedSettingsSectionRaw = SettingsNavigationTarget.account.rawValue
     @State private var highlightedSearchAnchorID: String?
@@ -4766,13 +4763,6 @@ struct SettingsView: View {
     @AppStorage(BrowserLinkOpenSettings.browserExternalOpenPatternsKey)
     private var browserExternalOpenPatterns = BrowserLinkOpenSettings.defaultBrowserExternalOpenPatterns
     @AppStorage(BrowserInsecureHTTPSettings.allowlistKey) private var browserInsecureHTTPAllowlist = BrowserInsecureHTTPSettings.defaultAllowlistText
-    @AppStorage(NotificationSoundSettings.key) private var notificationSound = NotificationSoundSettings.defaultValue
-    @AppStorage(NotificationSoundSettings.customFilePathKey)
-    private var notificationSoundCustomFilePath = NotificationSoundSettings.defaultCustomFilePath
-    @AppStorage(NotificationSoundSettings.customCommandKey) private var notificationCustomCommand = NotificationSoundSettings.defaultCustomCommand
-    @AppStorage(NotificationBadgeSettings.dockBadgeEnabledKey) private var notificationDockBadgeEnabled = NotificationBadgeSettings.defaultDockBadgeEnabled
-    @AppStorage(NotificationPaneRingSettings.enabledKey) private var notificationPaneRingEnabled = NotificationPaneRingSettings.defaultEnabled
-    @AppStorage(NotificationPaneFlashSettings.enabledKey) private var notificationPaneFlashEnabled = NotificationPaneFlashSettings.defaultEnabled
     @AppStorage(MenuBarExtraSettings.showInMenuBarKey) private var showMenuBarExtra = MenuBarExtraSettings.defaultShowInMenuBar
     @AppStorage(MenuBarOnlySettings.menuBarOnlyKey) private var menuBarOnly = MenuBarOnlySettings.defaultMenuBarOnly
     @AppStorage(QuitWarningSettings.warnBeforeQuitKey) private var warnBeforeQuitShortcut = QuitWarningSettings.defaultWarnBeforeQuit
@@ -4798,13 +4788,10 @@ struct SettingsView: View {
     private var sidebarHideAllDetails = SidebarWorkspaceDetailSettings.defaultHideAllDetails
     @AppStorage(SidebarWorkspaceDetailSettings.showWorkspaceDescriptionKey)
     private var sidebarShowWorkspaceDescription = SidebarWorkspaceDetailSettings.defaultShowWorkspaceDescription
-    @AppStorage(SidebarWorkspaceDetailSettings.showNotificationMessageKey)
-    private var sidebarShowNotificationMessage = SidebarWorkspaceDetailSettings.defaultShowNotificationMessage
     @AppStorage(SidebarBranchLayoutSettings.key) private var sidebarBranchVerticalLayout = SidebarBranchLayoutSettings.defaultVerticalLayout
     @AppStorage(SidebarActiveTabIndicatorSettings.styleKey)
     private var sidebarActiveTabIndicatorStyle = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
     @AppStorage("sidebarSelectionColorHex") private var sidebarSelectionColorHex: String?
-    @AppStorage("sidebarNotificationBadgeColorHex") private var sidebarNotificationBadgeColorHex: String?
     @AppStorage("sidebarShowBranchDirectory") private var sidebarShowBranchDirectory = SidebarWorkspaceDetailDefaults.showBranchDirectory
     @AppStorage("sidebarShowPullRequest") private var sidebarShowPullRequest = SidebarWorkspaceDetailDefaults.showPullRequests
     @AppStorage(SidebarPullRequestClickabilitySettings.key) private var sidebarMakePullRequestClickable = SidebarPullRequestClickabilitySettings.defaultClickable
@@ -4825,7 +4812,6 @@ struct SettingsView: View {
     @AppStorage(RightSidebarBetaFeatureSettings.dockEnabledKey)
     private var rightSidebarDockEnabled = RightSidebarBetaFeatureSettings.defaultDockEnabled
 
-    @ObservedObject private var notificationStore = TerminalNotificationStore.shared
     @ObservedObject private var authManager = AuthManager.shared
     @StateObject private var keyboardShortcutSettingsObserver = KeyboardShortcutSettingsObserver.shared
     @State private var shortcutResetToken = UUID()
@@ -4838,10 +4824,6 @@ struct SettingsView: View {
     @State private var socketPasswordDraft = ""
     @State private var socketPasswordStatusMessage: String?
     @State private var socketPasswordStatusIsError = false
-    @State private var notificationCustomSoundStatusMessage: String?
-    @State private var notificationCustomSoundStatusIsError = false
-    @State private var showNotificationCustomSoundErrorAlert = false
-    @State private var notificationCustomSoundErrorAlertMessage = ""
     @State private var showLanguageRestartAlert = false
     @State private var isResettingSettings = false
     @State private var workspaceTabPaletteEntries = WorkspaceTabColorSettings.palette()
@@ -4963,21 +4945,6 @@ struct SettingsView: View {
             set: { newColor in
                 let nsColor = NSColor(newColor)
                 sidebarSelectionColorHex = nsColor.hexString()
-            }
-        )
-    }
-
-    private var notificationBadgeColorBinding: Binding<Color> {
-        Binding(
-            get: {
-                if let hex = sidebarNotificationBadgeColorHex, let nsColor = NSColor(hex: hex) {
-                    return Color(nsColor: nsColor)
-                }
-                return cmuxAccentColor()
-            },
-            set: { newColor in
-                let nsColor = NSColor(newColor)
-                sidebarNotificationBadgeColorHex = nsColor.hexString()
             }
         )
     }
@@ -5175,156 +5142,6 @@ struct SettingsView: View {
         browserInsecureHTTPAllowlistDraft != browserInsecureHTTPAllowlist
     }
 
-    private var hasCustomNotificationSoundFilePath: Bool {
-        !notificationSoundCustomFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var notificationSoundCustomFileDisplayName: String {
-        guard hasCustomNotificationSoundFilePath else {
-            return String(
-                localized: "settings.notifications.sound.custom.file.none",
-                defaultValue: "No file selected"
-            )
-        }
-        return URL(fileURLWithPath: notificationSoundCustomFilePath).lastPathComponent
-    }
-
-    private var canPreviewNotificationSound: Bool {
-        switch notificationSound {
-        case "none":
-            return false
-        case NotificationSoundSettings.customFileValue:
-            return hasCustomNotificationSoundFilePath
-        default:
-            return true
-        }
-    }
-
-    private var notificationPermissionStatusText: String {
-        notificationStore.authorizationState.statusLabel
-    }
-
-    private var notificationPermissionStatusColor: Color {
-        switch notificationStore.authorizationState {
-        case .authorized, .provisional, .ephemeral:
-            return .green
-        case .denied:
-            return .red
-        case .unknown, .notDetermined:
-            return .secondary
-        }
-    }
-
-    private var notificationPermissionSubtitle: String {
-        switch notificationStore.authorizationState {
-        case .unknown, .notDetermined:
-            return "Desktop notifications are not enabled yet."
-        case .authorized:
-            return "Desktop notifications are enabled."
-        case .denied:
-            return "Desktop notifications are disabled in System Settings."
-        case .provisional:
-            return "Desktop notifications are enabled with quiet delivery."
-        case .ephemeral:
-            return "Desktop notifications are temporarily enabled."
-        }
-    }
-
-    private var notificationPermissionActionTitle: String {
-        switch notificationStore.authorizationState {
-        case .unknown, .notDetermined:
-            return "Enable"
-        case .authorized, .denied, .provisional, .ephemeral:
-            return "Open Settings"
-        }
-    }
-
-    private func previewNotificationSound() {
-        if notificationSound == NotificationSoundSettings.customFileValue {
-            NotificationSoundSettings.playCustomFileSound(path: notificationSoundCustomFilePath)
-            return
-        }
-        NotificationSoundSettings.previewSound(value: notificationSound)
-    }
-
-    private func notificationCustomSoundIssueMessage(_ issue: NotificationSoundSettings.CustomSoundPreparationIssue) -> String {
-        switch issue {
-        case .emptyPath:
-            return String(
-                localized: "settings.notifications.sound.custom.status.empty",
-                defaultValue: "Choose a custom audio file first."
-            )
-        case .missingFile(let path):
-            let fileName = URL(fileURLWithPath: path).lastPathComponent
-            return String(
-                localized: "settings.notifications.sound.custom.status.missingFilePrefix",
-                defaultValue: "File not found: "
-            ) + fileName
-        case .missingFileExtension(let path):
-            let fileName = URL(fileURLWithPath: path).lastPathComponent
-            return String(
-                localized: "settings.notifications.sound.custom.status.missingExtensionPrefix",
-                defaultValue: "File needs an extension: "
-            ) + fileName
-        case .stagingFailed(_, let details):
-            let prefix = String(
-                localized: "settings.notifications.sound.custom.status.prepareFailed",
-                defaultValue: "Could not prepare this file for notifications. Try WAV, AIFF, or CAF."
-            )
-            return "\(prefix) (\(details))"
-        }
-    }
-
-    private func notificationCustomSoundReadyStatusMessage(for path: String) -> String {
-        let sourceExtension = URL(fileURLWithPath: path).pathExtension
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let stagedExtension = NotificationSoundSettings.stagedCustomSoundFileExtension(forSourceExtension: sourceExtension)
-        if !sourceExtension.isEmpty, stagedExtension != sourceExtension {
-            return String(
-                localized: "settings.notifications.sound.custom.status.readyConverted",
-                defaultValue: "Prepared for notifications (converted to CAF)."
-            )
-        }
-        return String(
-            localized: "settings.notifications.sound.custom.status.ready",
-            defaultValue: "Ready for notifications."
-        )
-    }
-
-    private func refreshNotificationCustomSoundStatus(showAlertOnFailure: Bool = false) {
-        guard notificationSound == NotificationSoundSettings.customFileValue else {
-            notificationCustomSoundStatusMessage = nil
-            notificationCustomSoundStatusIsError = false
-            return
-        }
-        let pathSnapshot = notificationSoundCustomFilePath
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = NotificationSoundSettings.prepareCustomFileForNotifications(path: pathSnapshot)
-            DispatchQueue.main.async {
-                guard notificationSound == NotificationSoundSettings.customFileValue else {
-                    notificationCustomSoundStatusMessage = nil
-                    notificationCustomSoundStatusIsError = false
-                    return
-                }
-                guard notificationSoundCustomFilePath == pathSnapshot else { return }
-                switch result {
-                case .success:
-                    notificationCustomSoundStatusMessage = notificationCustomSoundReadyStatusMessage(for: pathSnapshot)
-                    notificationCustomSoundStatusIsError = false
-                case .failure(let issue):
-                    let message = notificationCustomSoundIssueMessage(issue)
-                    notificationCustomSoundStatusMessage = message
-                    notificationCustomSoundStatusIsError = true
-                    if showAlertOnFailure {
-                        notificationCustomSoundErrorAlertMessage = message
-                        showNotificationCustomSoundErrorAlert = true
-                    }
-                }
-            }
-        }
-    }
-
     private func applySettingsNavigation(
         _ destination: SettingsNavigationDestination,
         proxy: ScrollViewProxy
@@ -5346,51 +5163,6 @@ struct SettingsView: View {
             if destination.shouldHighlight {
                 proxy.scrollTo(destination.anchorID, anchor: .center)
             }
-        }
-    }
-
-    private func chooseNotificationSoundFile() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.audio]
-        panel.title = String(
-            localized: "settings.notifications.sound.custom.choose.title",
-            defaultValue: "Choose Notification Sound"
-        )
-        panel.prompt = String(
-            localized: "settings.notifications.sound.custom.choose.prompt",
-            defaultValue: "Choose"
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let selectedPath = url.path
-        switch NotificationSoundSettings.prepareCustomFileForNotifications(path: selectedPath) {
-        case .success:
-            notificationSoundCustomFilePath = selectedPath
-            notificationSound = NotificationSoundSettings.customFileValue
-            notificationCustomSoundStatusMessage = notificationCustomSoundReadyStatusMessage(for: selectedPath)
-            notificationCustomSoundStatusIsError = false
-            previewNotificationSound()
-        case .failure(let issue):
-            let message = notificationCustomSoundIssueMessage(issue)
-            notificationCustomSoundErrorAlertMessage = message
-            showNotificationCustomSoundErrorAlert = true
-            refreshNotificationCustomSoundStatus()
-        }
-    }
-
-    private func handleNotificationPermissionAction() {
-        let state = notificationStore.authorizationState.statusLabel
-#if DEBUG
-        cmuxDebugLog("notification.ui enableTapped state=\(state)")
-#endif
-        NSLog("notification.ui enableTapped state=%@", state)
-        switch notificationStore.authorizationState {
-        case .unknown, .notDetermined:
-            notificationStore.requestAuthorizationFromSettings()
-        case .authorized, .denied, .provisional, .ephemeral:
-            notificationStore.openNotificationSettings()
         }
     }
 
@@ -5676,22 +5448,6 @@ struct SettingsView: View {
                         SettingsCardDivider()
 
                         SettingsCardRow(
-                            configurationReview: .json("notifications.showInMenuBar"),
-                            String(localized: "settings.app.showInMenuBar", defaultValue: "Show in Menu Bar"),
-                            subtitle: String(localized: "settings.app.showInMenuBar.subtitle", defaultValue: "Keep cmux in the menu bar for quick actions.")
-                        ) {
-                            Toggle("", isOn: showMenuBarExtraBinding)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityLabel(
-                                    String(localized: "settings.app.showInMenuBar", defaultValue: "Show in Menu Bar")
-                                )
-                        }
-                        .disabled(menuBarOnly)
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
                             configurationReview: .json("app.warnBeforeQuit"),
                             String(localized: "settings.app.warnBeforeQuit", defaultValue: "Warn Before Quit"),
                             subtitle: warnBeforeQuitShortcut
@@ -5826,19 +5582,6 @@ struct SettingsView: View {
                         ) {
                             Text(String(localized: "settings.app.sidebarBranchLayout.vertical", defaultValue: "Vertical")).tag(true)
                             Text(String(localized: "settings.app.sidebarBranchLayout.inline", defaultValue: "Inline")).tag(false)
-                        }
-                        .disabled(sidebarHideAllDetails)
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("sidebar.showNotificationMessage"),
-                            String(localized: "settings.app.showNotificationMessage", defaultValue: "Show Notification Message in Sidebar"),
-                            subtitle: String(localized: "settings.app.showNotificationMessage.subtitle", defaultValue: "Display the latest notification message below the workspace title.")
-                        ) {
-                            Toggle("", isOn: $sidebarShowNotificationMessage)
-                                .labelsHidden()
-                                .controlSize(.small)
                         }
                         .disabled(sidebarHideAllDetails)
 
@@ -6348,18 +6091,12 @@ struct SettingsView: View {
                             subtitle: String(localized: "settings.shortcuts.chords.subtitle", defaultValue: "Add tmux-style multi-step shortcuts in cmux.json, for example [\"ctrl+b\", \"c\"]."),
                             searchAnchorID: SettingsSearchIndex.settingID(for: .keyboardShortcuts, idSuffix: "shortcut-chords")
                         ) {
-                            HStack(spacing: 8) {
-                                Link(String(localized: "settings.shortcuts.chords.docsButton", defaultValue: "Chord docs"), destination: shortcutChordsDocsURL)
-                                    .font(.caption)
-                                    .accessibilityIdentifier("SettingsKeyboardShortcutsChordDocsLink")
-
-                                Button(String(localized: "settings.app.settingsFile.openButton", defaultValue: "Open cmux.json")) {
-                                    openCmuxSettingsFileInEditor()
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsKeyboardShortcutsOpenSettingsFileButton")
+                            Button(String(localized: "settings.app.settingsFile.openButton", defaultValue: "Open cmux.json")) {
+                                openCmuxSettingsFileInEditor()
                             }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityIdentifier("SettingsKeyboardShortcutsOpenSettingsFileButton")
                         }
 
                         SettingsCardDivider()
@@ -6449,39 +6186,6 @@ struct SettingsView: View {
                             }
                         }
 
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("workspaceColors.notificationBadgeColor"),
-                            String(localized: "settings.workspaceColors.notificationBadgeColor", defaultValue: "Notification Badge"),
-                            subtitle: String(localized: "settings.workspaceColors.notificationBadgeColor.subtitle", defaultValue: "Color of the unread notification badge on workspace tabs.")
-                        ) {
-                            HStack(spacing: 8) {
-                                if sidebarNotificationBadgeColorHex != nil {
-                                    Button(String(localized: "settings.workspaceColors.notificationBadgeColor.reset", defaultValue: "Reset")) {
-                                        sidebarNotificationBadgeColorHex = nil
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-
-                                ColorPicker(
-                                    "",
-                                    selection: notificationBadgeColorBinding,
-                                    supportsOpacity: false
-                                )
-                                .labelsHidden()
-                                .frame(width: 38)
-
-                                Text(sidebarNotificationBadgeColorHex ?? String(localized: "settings.sidebarAppearance.defaultLabel", defaultValue: "Default"))
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 76, alignment: .trailing)
-                            }
-                        }
-
-                        SettingsCardDivider()
-
                         SettingsCardNote(
                             String(
                                 localized: "settings.workspaceColors.dictionaryNote",
@@ -6563,7 +6267,7 @@ struct SettingsView: View {
                         SettingsCardRow(
                             configurationReview: .action,
                             String(localized: "settings.settingsJSON.file", defaultValue: "User config file"),
-                            subtitle: String(localized: "settings.settingsJSON.file.subtitle", defaultValue: "Edit cmux-owned app settings, shortcuts, automation, sidebar, notifications, and browser behavior."),
+                            subtitle: String(localized: "settings.settingsJSON.file.subtitle", defaultValue: "Edit cmux-owned app settings, shortcuts, automation, sidebar, and browser behavior."),
                             controlWidth: 330,
                             searchAnchorID: SettingsSearchIndex.settingID(for: .settingsJSON, idSuffix: "open-file")
                         ) {
@@ -6583,19 +6287,6 @@ struct SettingsView: View {
                                 .accessibilityIdentifier("SettingsJSONOpenButton")
                             }
                             .accessibilityIdentifier("SettingsJSONOpenFileRowActions")
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .action,
-                            String(localized: "settings.settingsJSON.documentation", defaultValue: "Documentation"),
-                            subtitle: String(localized: "settings.settingsJSON.documentation.subtitle", defaultValue: "View supported keys, file locations, schema, and reload behavior."),
-                            searchAnchorID: SettingsSearchIndex.settingID(for: .settingsJSON, idSuffix: "documentation")
-                        ) {
-                            Link(String(localized: "settings.settingsJSON.docsButton", defaultValue: "Open Docs"), destination: settingsJSONDocsURL)
-                                .font(.caption)
-                                .accessibilityIdentifier("SettingsJSONDocsLink")
                         }
                     }
 
@@ -6627,14 +6318,12 @@ struct SettingsView: View {
         .toggleStyle(.switch)
         .onAppear {
             BrowserHistoryStore.shared.loadIfNeeded()
-            notificationStore.refreshAuthorizationStatus()
             browserThemeMode = BrowserThemeSettings.mode(defaults: .standard).rawValue
             browserImportHintVariantRaw = BrowserImportHintSettings.variant(for: browserImportHintVariantRaw).rawValue
             browserHistoryEntryCount = BrowserHistoryStore.shared.entries.count
             browserInsecureHTTPAllowlistDraft = browserInsecureHTTPAllowlist
             refreshDetectedImportBrowsers()
             reloadWorkspaceTabColorSettings()
-            refreshNotificationCustomSoundStatus()
             let target = SettingsWindowPresenter.consumePendingContentNavigationTarget()
                 ?? SettingsNavigationTarget(rawValue: selectedSettingsSectionRaw)
                 ?? .account
@@ -6646,12 +6335,6 @@ struct SettingsView: View {
                 ),
                 proxy: proxy
             )
-        }
-        .onChange(of: notificationSound) { _, _ in
-            refreshNotificationCustomSoundStatus()
-        }
-        .onChange(of: notificationSoundCustomFilePath) { _, _ in
-            refreshNotificationCustomSoundStatus()
         }
         .onChange(of: browserInsecureHTTPAllowlist) { oldValue, newValue in
             // Keep draft in sync with external changes unless the user has local unsaved edits.
@@ -6705,17 +6388,6 @@ struct SettingsView: View {
                 relaunchApp()
             }
             Button(String(localized: "settings.app.language.restartDialog.later", defaultValue: "Later"), role: .cancel) {}
-        }
-        .alert(
-            String(
-                localized: "settings.notifications.sound.custom.error.title",
-                defaultValue: "Custom Notification Sound Error"
-            ),
-            isPresented: $showNotificationCustomSoundErrorAlert
-        ) {
-            Button(String(localized: "common.ok", defaultValue: "OK"), role: .cancel) {}
-        } message: {
-            Text(notificationCustomSoundErrorAlertMessage)
         }
         }
     }
@@ -6772,16 +6444,6 @@ struct SettingsView: View {
         browserExternalOpenPatterns = BrowserLinkOpenSettings.defaultBrowserExternalOpenPatterns
         browserInsecureHTTPAllowlist = BrowserInsecureHTTPSettings.defaultAllowlistText
         browserInsecureHTTPAllowlistDraft = BrowserInsecureHTTPSettings.defaultAllowlistText
-        notificationSound = NotificationSoundSettings.defaultValue
-        notificationSoundCustomFilePath = NotificationSoundSettings.defaultCustomFilePath
-        notificationCustomSoundStatusMessage = nil
-        notificationCustomSoundStatusIsError = false
-        showNotificationCustomSoundErrorAlert = false
-        notificationCustomSoundErrorAlertMessage = ""
-        notificationCustomCommand = NotificationSoundSettings.defaultCustomCommand
-        notificationDockBadgeEnabled = NotificationBadgeSettings.defaultDockBadgeEnabled
-        notificationPaneRingEnabled = NotificationPaneRingSettings.defaultEnabled
-        notificationPaneFlashEnabled = NotificationPaneFlashSettings.defaultEnabled
         showMenuBarExtra = MenuBarExtraSettings.defaultShowInMenuBar
         menuBarOnly = MenuBarOnlySettings.defaultMenuBarOnly
         warnBeforeQuitShortcut = QuitWarningSettings.defaultWarnBeforeQuit
@@ -6808,11 +6470,9 @@ struct SettingsView: View {
         iMessageMode = IMessageModeSettings.defaultValue
         sidebarHideAllDetails = SidebarWorkspaceDetailSettings.defaultHideAllDetails
         sidebarShowWorkspaceDescription = SidebarWorkspaceDetailSettings.defaultShowWorkspaceDescription
-        sidebarShowNotificationMessage = SidebarWorkspaceDetailSettings.defaultShowNotificationMessage
         sidebarBranchVerticalLayout = SidebarBranchLayoutSettings.defaultVerticalLayout
         sidebarActiveTabIndicatorStyle = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
         sidebarSelectionColorHex = nil
-        sidebarNotificationBadgeColorHex = nil
         sidebarShowBranchDirectory = SidebarWorkspaceDetailDefaults.showBranchDirectory
         sidebarShowPullRequest = SidebarWorkspaceDetailDefaults.showPullRequests
         sidebarMakePullRequestClickable = SidebarPullRequestClickabilitySettings.defaultClickable

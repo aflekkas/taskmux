@@ -79,16 +79,10 @@ extension CmuxSettingsFileStore {
                 ],
             ],
             [
-                "notifications": [
-                    "showInMenuBar": MenuBarExtraSettings.defaultShowInMenuBar,
-                ],
-            ],
-            [
                 "sidebar": [
                     "hideAllDetails": SidebarWorkspaceDetailSettings.defaultHideAllDetails,
                     "showWorkspaceDescription": SidebarWorkspaceDetailSettings.defaultShowWorkspaceDescription,
                     "branchLayout": SidebarBranchLayoutSettings.defaultVerticalLayout ? "vertical" : "inline",
-                    "showNotificationMessage": SidebarWorkspaceDetailSettings.defaultShowNotificationMessage,
                     "showBranchDirectory": SidebarWorkspaceDetailDefaults.showBranchDirectory,
                     "showPullRequests": SidebarWorkspaceDetailDefaults.showPullRequests,
                     "makePullRequestsClickable": SidebarPullRequestClickabilitySettings.defaultClickable,
@@ -105,7 +99,6 @@ extension CmuxSettingsFileStore {
                 "workspaceColors": [
                     "indicatorStyle": SidebarActiveTabIndicatorSettings.defaultStyle.rawValue,
                     "selectionColor": NSNull(),
-                    "notificationBadgeColor": NSNull(),
                     "colors": Dictionary(
                         uniqueKeysWithValues: WorkspaceTabColorSettings.defaultPalette.map { ($0.name, $0.hex) }
                     ),
