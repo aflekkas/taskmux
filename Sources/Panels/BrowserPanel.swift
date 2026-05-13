@@ -2299,9 +2299,6 @@ final class BrowserPanel: Panel, ObservableObject {
     /// Published estimated progress (0.0 - 1.0)
     @Published private(set) var estimatedProgress: Double = 0.0
 
-    /// Increment to request a UI-only flash highlight (e.g. from a keyboard shortcut).
-    @Published private(set) var focusFlashToken: Int = 0
-
     /// Sticky omnibar-focus intent. This survives view mount timing races and is
     /// cleared only after BrowserPanelView acknowledges handling it.
     @Published private(set) var pendingAddressBarFocusRequestId: UUID?

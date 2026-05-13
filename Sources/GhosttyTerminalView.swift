@@ -8998,15 +8998,6 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, modsFromEvent(event))
 
         let menu = NSMenu()
-        if onTriggerFlash != nil {
-            let flashItem = menu.addItem(
-                withTitle: String(localized: "terminalContextMenu.triggerFlash", defaultValue: "Trigger Flash"),
-                action: #selector(triggerFlash(_:)),
-                keyEquivalent: ""
-            )
-            flashItem.target = self
-            menu.addItem(.separator())
-        }
         if ghostty_surface_has_selection(surface) {
             let item = menu.addItem(
                 withTitle: String(localized: "terminalContextMenu.copy", defaultValue: "Copy"),
@@ -9096,10 +9087,6 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
             return false
         }
         return manager.createSplit(tabId: tabId, surfaceId: surfaceId, direction: direction) != nil
-    }
-
-    @objc private func triggerFlash(_ sender: Any?) {
-        onTriggerFlash?()
     }
 
     @objc private func resetTerminal(_ sender: Any?) {
@@ -9680,19 +9667,10 @@ final class GhosttySurfaceScrollView: NSView {
         }
     }
 
-    private static func flashPresentation(for style: FlashStyle) -> WorkspaceAttentionFlashPresentation {
-        switch style {
-        case .navigation:
-            return WorkspaceAttentionCoordinator.flashStyle(for: .navigation)
-        case .notification:
-            return WorkspaceAttentionCoordinator.flashStyle(for: .notificationArrival)
-        }
-    }
-
     private enum NotificationRingMetrics {
-        static let inset = PanelOverlayRingMetrics.inset
-        static let cornerRadius = PanelOverlayRingMetrics.cornerRadius
-        static let lineWidth = PanelOverlayRingMetrics.lineWidth
+        static let inset: CGFloat = 2
+        static let cornerRadius: CGFloat = 6
+        static let lineWidth: CGFloat = 2.5
     }
 
     private let backgroundView: NSView
@@ -10018,13 +9996,13 @@ final class GhosttySurfaceScrollView: NSView {
         flashOverlayView.layer?.masksToBounds = false
         flashOverlayView.autoresizingMask = [.width, .height]
         flashLayer.fillColor = NSColor.clear.cgColor
-        flashLayer.strokeColor = WorkspaceAttentionCoordinator.flashStyle(for: .navigation).accent.strokeColor.cgColor
+        flashLayer.strokeColor = NSColor.clear.cgColor
         flashLayer.lineWidth = NotificationRingMetrics.lineWidth
         flashLayer.lineJoin = .round
         flashLayer.lineCap = .round
-        flashLayer.shadowColor = WorkspaceAttentionCoordinator.flashStyle(for: .navigation).accent.strokeColor.cgColor
-        flashLayer.shadowOpacity = Float(WorkspaceAttentionCoordinator.flashStyle(for: .navigation).glowOpacity)
-        flashLayer.shadowRadius = WorkspaceAttentionCoordinator.flashStyle(for: .navigation).glowRadius
+        flashLayer.shadowColor = NSColor.clear.cgColor
+        flashLayer.shadowOpacity = 0
+        flashLayer.shadowRadius = 0
         flashLayer.shadowOffset = .zero
         flashLayer.opacity = 0
         flashOverlayView.layer?.addSublayer(flashLayer)
@@ -10422,8 +10400,6 @@ final class GhosttySurfaceScrollView: NSView {
         }
         scrollView.layoutSubtreeIfNeeded()
         updateNotificationRingPath()
-        updateFlashPath(style: lastFlashStyle)
-        updateFlashAppearance(style: lastFlashStyle)
         synchronizeScrollView()
         synchronizeSurfaceView()
         let didCoreSurfaceChange = synchronizeCoreSurface()
@@ -10653,23 +10629,7 @@ final class GhosttySurfaceScrollView: NSView {
     }
 
     func setNotificationRing(visible: Bool) {
-        if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in
-                self?.setNotificationRing(visible: visible)
-            }
-            return
-        }
-
-        let targetHidden = !visible
-        let targetOpacity: Float = visible ? 1 : 0
-        guard notificationRingOverlayView.isHidden != targetHidden ||
-                notificationRingLayer.opacity != targetOpacity else { return }
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        notificationRingOverlayView.isHidden = targetHidden
-        notificationRingLayer.opacity = targetOpacity
-        CATransaction.commit()
+        _ = visible
     }
 
     private func cancelDeferredSearchOverlayMutation() {
@@ -11224,32 +11184,7 @@ final class GhosttySurfaceScrollView: NSView {
 #endif
 
     func triggerFlash(style: FlashStyle = .navigation) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.lastFlashStyle = style
-            #if DEBUG
-            if let surfaceId = self.surfaceView.terminalSurface?.id {
-                Self.recordFlash(for: surfaceId)
-            }
-#endif
-            self.updateFlashPath(style: style)
-            self.updateFlashAppearance(style: style)
-            self.flashLayer.removeAllAnimations()
-            self.flashLayer.opacity = 0
-            let animation = CAKeyframeAnimation(keyPath: "opacity")
-            animation.values = FocusFlashPattern.values.map { NSNumber(value: $0) }
-            animation.keyTimes = FocusFlashPattern.keyTimes.map { NSNumber(value: $0) }
-            animation.duration = FocusFlashPattern.duration
-            animation.timingFunctions = FocusFlashPattern.curves.map { curve in
-                switch curve {
-                case .easeIn:
-                    return CAMediaTimingFunction(name: .easeIn)
-                case .easeOut:
-                    return CAMediaTimingFunction(name: .easeOut)
-                }
-            }
-            self.flashLayer.add(animation, forKey: "cmux.flash")
-        }
+        _ = style
     }
 
     func setVisibleInUI(_ visible: Bool) {
@@ -12509,31 +12444,6 @@ final class GhosttySurfaceScrollView: NSView {
         )
     }
 
-    private func updateFlashPath(style: FlashStyle) {
-        let inset: CGFloat
-        let radius: CGFloat
-        switch style {
-        case .navigation, .notification:
-            inset = NotificationRingMetrics.inset
-            radius = NotificationRingMetrics.cornerRadius
-        }
-        updateOverlayRingPath(
-            layer: flashLayer,
-            bounds: flashOverlayView.bounds,
-            inset: inset,
-            radius: radius
-        )
-    }
-
-    private func updateFlashAppearance(style: FlashStyle) {
-        let presentation = Self.flashPresentation(for: style)
-        let strokeColor = presentation.accent.strokeColor
-        flashLayer.strokeColor = strokeColor.cgColor
-        flashLayer.shadowColor = strokeColor.cgColor
-        flashLayer.shadowOpacity = Float(presentation.glowOpacity)
-        flashLayer.shadowRadius = presentation.glowRadius
-    }
-
     private func updateOverlayRingPath(
         layer: CAShapeLayer,
         bounds: CGRect,
@@ -12545,7 +12455,7 @@ final class GhosttySurfaceScrollView: NSView {
             layer.path = nil
             return
         }
-        let rect = PanelOverlayRingMetrics.pathRect(in: bounds)
+        let rect = bounds.insetBy(dx: inset, dy: inset)
         layer.path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     }
 

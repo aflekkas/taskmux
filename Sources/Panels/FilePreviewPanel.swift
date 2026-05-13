@@ -841,7 +841,6 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
     @Published private(set) var textContent = ""
     @Published private(set) var isDirty = false
     @Published private(set) var isSaving = false
-    @Published private(set) var focusFlashToken = 0
     @Published private(set) var previewMode: FilePreviewMode
 
     private var originalTextContent = ""
@@ -1120,9 +1119,6 @@ struct FilePreviewPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
-    @State private var focusFlashOpacity = 0.0
-    @State private var focusFlashAnimationGeneration = 0
-
     private var themeBackgroundColor: NSColor {
         appearance.backgroundColor
     }
@@ -1142,19 +1138,9 @@ struct FilePreviewPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .overlay {
-            RoundedRectangle(cornerRadius: FocusFlashPattern.ringCornerRadius)
-                .stroke(cmuxAccentColor().opacity(focusFlashOpacity), lineWidth: 3)
-                .shadow(color: cmuxAccentColor().opacity(focusFlashOpacity * 0.35), radius: 10)
-                .padding(FocusFlashPattern.ringInset)
-                .allowsHitTesting(false)
-        }
-        .overlay {
             if isVisibleInUI {
                 FilePreviewPointerObserver(onPointerDown: onRequestPanelFocus)
             }
-        }
-        .onChange(of: panel.focusFlashToken) {
-            triggerFocusFlashAnimation()
         }
     }
 
@@ -1230,29 +1216,6 @@ struct FilePreviewPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func triggerFocusFlashAnimation() {
-        focusFlashAnimationGeneration &+= 1
-        let generation = focusFlashAnimationGeneration
-        focusFlashOpacity = FocusFlashPattern.values.first ?? 0
-
-        for segment in FocusFlashPattern.segments {
-            DispatchQueue.main.asyncAfter(deadline: .now() + segment.delay) {
-                guard focusFlashAnimationGeneration == generation else { return }
-                withAnimation(focusFlashAnimation(for: segment.curve, duration: segment.duration)) {
-                    focusFlashOpacity = segment.targetOpacity
-                }
-            }
-        }
-    }
-
-    private func focusFlashAnimation(for curve: FocusFlashCurve, duration: TimeInterval) -> Animation {
-        switch curve {
-        case .easeIn:
-            return .easeIn(duration: duration)
-        case .easeOut:
-            return .easeOut(duration: duration)
-        }
-    }
 }
 
 private struct FilePreviewPDFView: NSViewRepresentable {

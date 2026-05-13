@@ -46,9 +46,6 @@ final class MarkdownPanel: Panel, ObservableObject, FilePreviewTextEditingPanel 
     /// Whether the file has been deleted or is unreadable.
     @Published private(set) var isFileUnavailable: Bool = false
 
-    /// Token incremented to trigger focus flash animation.
-    @Published private(set) var focusFlashToken: Int = 0
-
     // MARK: - File watching
 
     // nonisolated(unsafe) because deinit is not guaranteed to run on the

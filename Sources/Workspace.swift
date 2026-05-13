@@ -8085,28 +8085,9 @@ final class Workspace: Identifiable, ObservableObject {
         AppDelegate.shared?.notificationStore?.hasVisibleNotificationIndicator(forTabId: id, surfaceId: panelId) ?? false
     }
 
-    private func attentionPersistentState() -> WorkspaceAttentionPersistentState {
-        let notificationStore = AppDelegate.shared?.notificationStore
-        let unreadPanelIDs = Set(
-            panels.keys.filter {
-                notificationStore?.hasUnreadNotification(forTabId: id, surfaceId: $0) ?? false
-            }
-        )
-        return WorkspaceAttentionPersistentState(
-            unreadPanelIDs: unreadPanelIDs,
-            focusedReadPanelID: notificationStore?.focusedReadIndicatorSurfaceId(forTabId: id),
-            manualUnreadPanelIDs: manualUnreadPanelIds
-        )
-    }
-
     private func requestAttentionFlash(panelId: UUID, reason: WorkspaceAttentionFlashReason) {
-        let decision = WorkspaceAttentionCoordinator.decideFlash(
-            targetPanelID: panelId,
-            reason: reason,
-            persistentState: attentionPersistentState()
-        )
-        guard decision.isAllowed else { return }
-        panels[panelId]?.triggerFlash(reason: reason)
+        _ = panelId
+        _ = reason
     }
 
     private func syncUnreadBadgeStateForPanel(_ panelId: UUID) {
