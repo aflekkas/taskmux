@@ -157,7 +157,6 @@ struct CmuxTaskManagerView: View {
     @ViewBuilder
     private var tableBody: some View {
         let rows = model.sortedRows
-        let agentRows = model.sortedAgentRows
         let aggregateRows = model.sortedAggregateRows
         if let errorMessage = model.errorMessage {
             CmuxTaskManagerMessageView(
@@ -166,7 +165,7 @@ struct CmuxTaskManagerView: View {
             )
         } else if model.isInitialLoading {
             CmuxTaskManagerLoadingView()
-        } else if rows.isEmpty && agentRows.isEmpty && aggregateRows.isEmpty {
+        } else if rows.isEmpty && aggregateRows.isEmpty {
             CmuxTaskManagerMessageView(
                 title: String(localized: "taskManager.empty.title", defaultValue: "No resource usage"),
                 detail: String(localized: "taskManager.empty.detail", defaultValue: "Open a workspace, terminal, or browser surface to see it here.")
@@ -174,24 +173,6 @@ struct CmuxTaskManagerView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if !agentRows.isEmpty {
-                        CmuxTaskManagerSectionHeaderView(
-                            title: String(localized: "taskManager.section.codingAgents", defaultValue: "Coding Agents")
-                        )
-                        ForEach(agentRows) { row in
-                            CmuxTaskManagerRowView(
-                                row: row,
-                                onViewWorkspace: {},
-                                onViewTerminal: {},
-                                onKillProcess: {
-                                    model.killProcess(for: row)
-                                },
-                                onActivate: {}
-                            )
-                            Divider()
-                                .padding(.leading, 16)
-                        }
-                    }
                     if !aggregateRows.isEmpty {
                         CmuxTaskManagerSectionHeaderView(
                             title: String(localized: "taskManager.section.programTotals", defaultValue: "Program Totals")
@@ -210,7 +191,7 @@ struct CmuxTaskManagerView: View {
                                 .padding(.leading, 16)
                         }
                     }
-                    if !rows.isEmpty && (!agentRows.isEmpty || !aggregateRows.isEmpty) {
+                    if !rows.isEmpty && !aggregateRows.isEmpty {
                         CmuxTaskManagerSectionHeaderView(
                             title: String(localized: "taskManager.section.hierarchy", defaultValue: "Hierarchy")
                         )
@@ -380,17 +361,9 @@ private struct CmuxTaskManagerRowView: View {
 
     @ViewBuilder
     private var rowIcon: some View {
-        if let agentAssetName = row.agentAssetName {
-            Image(agentAssetName)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 14, height: 14)
-        } else {
-            Image(systemName: row.kind.systemImage)
-                .foregroundStyle(row.kind.tint)
-                .font(.system(size: 12))
-                .frame(width: 14)
-        }
+        Image(systemName: row.kind.systemImage)
+            .foregroundStyle(row.kind.tint)
+            .font(.system(size: 12))
+            .frame(width: 14)
     }
 }

@@ -4465,38 +4465,6 @@ enum CommandPaletteSwitcherSearchSettings {
     }
 }
 
-enum ClaudeCodeIntegrationSettings {
-    static let hooksEnabledKey = "claudeCodeHooksEnabled"
-    static let defaultHooksEnabled = false
-    static let customClaudePathKey = "claudeCodeCustomClaudePath"
-
-    static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        false
-    }
-
-    static func customClaudePath(defaults: UserDefaults = .standard) -> String? {
-        nil
-    }
-}
-
-enum CursorIntegrationSettings {
-    static let hooksEnabledKey = "cursorHooksEnabled"
-    static let defaultHooksEnabled = false
-
-    static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        false
-    }
-}
-
-enum GeminiIntegrationSettings {
-    static let hooksEnabledKey = "geminiHooksEnabled"
-    static let defaultHooksEnabled = false
-
-    static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        false
-    }
-}
-
 enum WelcomeSettings {
     static let shownKey = "cmuxWelcomeShown"
 }
@@ -4777,14 +4745,6 @@ struct SettingsView: View {
     @AppStorage(WorkspacePresentationModeSettings.modeKey)
     private var workspacePresentationMode = WorkspacePresentationModeSettings.defaultMode.rawValue
     @AppStorage(SocketControlSettings.appStorageKey) private var socketControlMode = SocketControlSettings.defaultMode.rawValue
-    @AppStorage(ClaudeCodeIntegrationSettings.hooksEnabledKey)
-    private var claudeCodeHooksEnabled = ClaudeCodeIntegrationSettings.defaultHooksEnabled
-    @AppStorage(ClaudeCodeIntegrationSettings.customClaudePathKey)
-    private var customClaudePath = ""
-    @AppStorage(CursorIntegrationSettings.hooksEnabledKey)
-    private var cursorHooksEnabled = CursorIntegrationSettings.defaultHooksEnabled
-    @AppStorage(GeminiIntegrationSettings.hooksEnabledKey)
-    private var geminiHooksEnabled = GeminiIntegrationSettings.defaultHooksEnabled
     @AppStorage(PreferredEditorSettings.key) private var preferredEditorCommand = ""
     @AppStorage(CmdClickSupportedFileRouteSettings.key)
     private var openSupportedFilesInCmux = CmdClickSupportedFileRouteSettings.defaultValue
@@ -6793,10 +6753,6 @@ struct SettingsView: View {
         appIconMode = AppIconSettings.defaultMode.rawValue
         AppIconSettings.applyIcon(.automatic)
         socketControlMode = SocketControlSettings.defaultMode.rawValue
-        claudeCodeHooksEnabled = ClaudeCodeIntegrationSettings.defaultHooksEnabled
-        customClaudePath = ""
-        cursorHooksEnabled = CursorIntegrationSettings.defaultHooksEnabled
-        geminiHooksEnabled = GeminiIntegrationSettings.defaultHooksEnabled
         preferredEditorCommand = ""
         CmdClickSupportedFileRouteSettings.setEnabled(CmdClickSupportedFileRouteSettings.defaultValue)
         openSupportedFilesInCmux = CmdClickSupportedFileRouteSettings.defaultValue

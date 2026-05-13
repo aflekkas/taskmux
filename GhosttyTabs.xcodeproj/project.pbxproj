@@ -185,7 +185,6 @@
 		A5D41203A1B2C3D4E5F60718 /* CLINotifyProcessIntegrationRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D41204A1B2C3D4E5F60718 /* CLINotifyProcessIntegrationRegressionTests.swift */; };
 		A5D41205A1B2C3D4E5F60718 /* CLINotifyProcessTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D41206A1B2C3D4E5F60718 /* CLINotifyProcessTestSupport.swift */; };
 		A5D4120DA1B2C3D4E5F60718 /* CLIAuthAliasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D4120EA1B2C3D4E5F60718 /* CLIAuthAliasTests.swift */; };
-		A5E01203A1B2C3D4E5F60718 /* OpenCodeHookRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E01204A1B2C3D4E5F60718 /* OpenCodeHookRegressionTests.swift */; };
 		A5001100 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5001101 /* Assets.xcassets */; };
 		C0DE3150A00000000000001 /* MinimalModeSidebarControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE3150A00000000000002 /* MinimalModeSidebarControls.swift */; };
 		C0DE3151A00000000000001 /* TitlebarControlsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE3151A00000000000002 /* TitlebarControlsSupport.swift */; };
@@ -597,7 +596,6 @@
 		A5D4120EA1B2C3D4E5F60718 /* CLIAuthAliasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAuthAliasTests.swift; sourceTree = "<group>"; };
 		C0DE35530000000000000102 /* BundledCLILinkageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledCLILinkageTests.swift; sourceTree = "<group>"; };
 		C37800000000000000000002 /* VMSSHCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMSSHCommandTests.swift; sourceTree = "<group>"; };
-		A5E01204A1B2C3D4E5F60718 /* OpenCodeHookRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeHookRegressionTests.swift; sourceTree = "<group>"; };
 		A5001101 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C0DE3150A00000000000002 /* MinimalModeSidebarControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Update/MinimalModeSidebarControls.swift; sourceTree = "<group>"; };
 		C0DE3151A00000000000002 /* TitlebarControlsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitlebarControlsSupport.swift; sourceTree = "<group>"; };
@@ -1617,7 +1615,6 @@
 					A5D4120DA1B2C3D4E5F60718 /* CLIAuthAliasTests.swift in Sources */,
 					C0DE35530000000000000101 /* BundledCLILinkageTests.swift in Sources */,
 					C37800000000000000000001 /* VMSSHCommandTests.swift in Sources */,
-					A5E01203A1B2C3D4E5F60718 /* OpenCodeHookRegressionTests.swift in Sources */,
 				2BB56A710BB1FC50367E5BCF /* TabManagerSessionSnapshotTests.swift in Sources */,
 				C1A2B3C4D5E6F70800000001 /* CmuxConfigTests.swift in Sources */,
 				C0DEF0A40000000000000001 /* CmuxConfigContextMenuTests.swift in Sources */,

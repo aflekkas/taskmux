@@ -1,7 +1,7 @@
 enum SidebarWorkspaceDetailDefaults {
     static let showBranchDirectory = true
     static let showPullRequests = true
-    static let showSSH = true
+    static let showSSH = false
     static let showPorts = true
     static let showLog = true
     static let showProgress = true
@@ -64,10 +64,6 @@ extension CmuxSettingsFileStore {
         "sidebarAppearance.tintOpacity",
         "automation.socketControlMode",
         "automation.socketPassword",
-        "automation.claudeCodeIntegration",
-        "automation.claudeBinaryPath",
-        "automation.cursorIntegration",
-        "automation.geminiIntegration",
         "automation.portBase",
         "automation.portRange",
         "browser.defaultSearchEngine",

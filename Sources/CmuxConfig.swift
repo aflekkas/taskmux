@@ -301,60 +301,6 @@ extension CmuxSurfaceTabBarBuiltInAction {
     }
 }
 
-enum CmuxConfigAgentKind: Sendable, Hashable {
-    case codex
-    case claudeCode
-
-    var commandName: String {
-        switch self {
-        case .codex:
-            return "codex"
-        case .claudeCode:
-            return "claude"
-        }
-    }
-
-    var defaultIcon: CmuxButtonIcon {
-        switch self {
-        case .codex:
-            return .symbol("sparkles")
-        case .claudeCode:
-            return .symbol("brain.head.profile")
-        }
-    }
-}
-
-extension CmuxConfigAgentKind: Codable {
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        switch value {
-        case "codex":
-            self = .codex
-        case "claude", "claudeCode", "claude-code":
-            self = .claudeCode
-        default:
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "Unknown agent '\(value)'"
-                )
-            )
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .codex:
-            try container.encode("codex")
-        case .claudeCode:
-            try container.encode("claude")
-        }
-    }
-}
-
 enum CmuxButtonIcon: Codable, Sendable, Hashable {
     case symbol(String)
     case emoji(String, scale: Double = 1)
@@ -794,7 +740,6 @@ struct CmuxConfigActionDefinition: Codable, Sendable, Hashable {
         case command
         case commandName
         case name
-        case agent
         case args
         case title
         case subtitle
@@ -851,8 +796,6 @@ struct CmuxConfigActionDefinition: Codable, Sendable, Hashable {
         let inferredType: String?
         if let type {
             inferredType = type
-        } else if container.contains(.agent) {
-            inferredType = "agent"
         } else if container.contains(.builtin) {
             inferredType = "builtin"
         } else if container.contains(.command) {
@@ -875,10 +818,6 @@ struct CmuxConfigActionDefinition: Codable, Sendable, Hashable {
         case "command":
             let command = try Self.requiredTrimmedString(forKey: .command, in: container)
             action = .command(command)
-        case "agent":
-            let agent = try container.decode(CmuxConfigAgentKind.self, forKey: .agent)
-            let args = try Self.trimmedString(forKey: .args, in: container, allowBlankAsNil: true)
-            action = .agent(agent, args: args)
         case "workspaceCommand":
             let commandName = try Self.trimmedString(forKey: .commandName, in: container)
                 ?? Self.trimmedString(forKey: .name, in: container)
@@ -922,10 +861,6 @@ struct CmuxConfigActionDefinition: Codable, Sendable, Hashable {
         case .command(let command):
             try container.encode("command", forKey: .type)
             try container.encode(command, forKey: .command)
-        case .agent(let agent, let args):
-            try container.encode("agent", forKey: .type)
-            try container.encode(agent, forKey: .agent)
-            try container.encodeIfPresent(args, forKey: .args)
         case .workspaceCommand(let commandName):
             try container.encode("workspaceCommand", forKey: .type)
             try container.encode(commandName, forKey: .commandName)
@@ -1026,7 +961,6 @@ struct CmuxConfigActionDefinition: Codable, Sendable, Hashable {
 enum CmuxSurfaceTabBarButtonAction: Sendable, Hashable {
     case builtIn(CmuxSurfaceTabBarBuiltInAction)
     case command(String)
-    case agent(CmuxConfigAgentKind, args: String?)
     case workspaceCommand(String)
     case actionReference(String)
 
@@ -1036,8 +970,6 @@ enum CmuxSurfaceTabBarButtonAction: Sendable, Hashable {
             return action.configID
         case .command(let command):
             return "command." + Self.generatedCommandId(for: command)
-        case .agent(let agent, _):
-            return agent.commandName
         case .workspaceCommand(let commandName):
             return "workspaceCommand." + Self.generatedCommandId(for: commandName)
         case .actionReference(let identifier):
@@ -1055,8 +987,6 @@ enum CmuxSurfaceTabBarButtonAction: Sendable, Hashable {
             return .symbol(action.defaultIcon)
         case .command:
             return .symbol("terminal")
-        case .agent(let agent, _):
-            return agent.defaultIcon
         case .workspaceCommand:
             return .symbol("rectangle.stack.badge.plus")
         case .actionReference:
@@ -1068,9 +998,6 @@ enum CmuxSurfaceTabBarButtonAction: Sendable, Hashable {
         switch self {
         case .command(let command):
             return command
-        case .agent(let agent, let args):
-            let trimmedArgs = args?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return trimmedArgs.isEmpty ? agent.commandName : "\(agent.commandName) \(trimmedArgs)"
         case .builtIn, .workspaceCommand, .actionReference:
             return nil
         }
@@ -1109,7 +1036,6 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
         case action
         case builtin
         case command
-        case agent
         case args
         case type
         case commandName
@@ -1188,7 +1114,7 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
             switch action {
             case .builtIn(let builtIn):
                 return builtIn.bonsplitAction ?? .custom(id)
-            case .command, .agent, .workspaceCommand, .actionReference:
+            case .command, .workspaceCommand, .actionReference:
                 return .custom(id)
             }
         }()
@@ -1253,8 +1179,6 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
         let rawAction = try Self.trimmedString(forKey: .action, in: container)
         let rawBuiltin = try Self.trimmedString(forKey: .builtin, in: container)
         let rawCommand = try Self.trimmedString(forKey: .command, in: container)
-        let rawAgent = try container.decodeIfPresent(CmuxConfigAgentKind.self, forKey: .agent)
-        let rawArgs = try Self.trimmedString(forKey: .args, in: container, allowBlankAsNil: true)
         let rawType = try Self.trimmedString(forKey: .type, in: container)
         let rawCommandName = try Self.trimmedString(forKey: .commandName, in: container)
             ?? Self.trimmedString(forKey: .name, in: container)
@@ -1267,14 +1191,13 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
             rawAction != nil,
             rawBuiltin != nil,
             rawCommand != nil,
-            rawAgent != nil,
             rawType != nil
         ].filter(\.self).count
         if definedActionForms > 1 {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
-                    debugDescription: "surfaceTabBarButtons entries must define only one of 'action', 'builtin', 'command', 'agent', or 'type'"
+                    debugDescription: "surfaceTabBarButtons entries must define only one of 'action', 'builtin', 'command', or 'type'"
                 )
             )
         }
@@ -1300,8 +1223,6 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
             }
         } else if let rawCommand {
             action = .command(rawCommand)
-        } else if let rawAgent {
-            action = .agent(rawAgent, args: rawArgs)
         } else if let rawBuiltin {
             guard let builtIn = CmuxSurfaceTabBarBuiltInAction(configID: rawBuiltin) else {
                 throw DecodingError.dataCorruptedError(
@@ -1388,9 +1309,6 @@ struct CmuxSurfaceTabBarButton: Codable, Sendable, Hashable, Identifiable {
             try container.encode(builtIn.configID, forKey: .builtin)
         case .command(let command):
             try container.encode(command, forKey: .command)
-        case .agent(let agent, let args):
-            try container.encode(agent, forKey: .agent)
-            try container.encodeIfPresent(args, forKey: .args)
         case .workspaceCommand(let commandName):
             try container.encode("workspaceCommand", forKey: .type)
             try container.encode(commandName, forKey: .commandName)
@@ -1534,13 +1452,6 @@ struct CmuxResolvedConfigAction: Identifiable, Sendable, Hashable {
 
     private static func defaultTitle(for id: String, action: CmuxSurfaceTabBarButtonAction) -> String {
         switch action {
-        case .agent(let agent, _):
-            switch agent {
-            case .codex:
-                return String(localized: "command.cmuxConfig.defaultCodexTitle", defaultValue: "Codex")
-            case .claudeCode:
-                return String(localized: "command.cmuxConfig.defaultClaudeCodeTitle", defaultValue: "Claude Code")
-            }
         case .command:
             return id
         case .workspaceCommand(let commandName):

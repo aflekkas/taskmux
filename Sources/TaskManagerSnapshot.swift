@@ -3,14 +3,12 @@ import Foundation
 struct CmuxTaskManagerSnapshot {
     static let empty = CmuxTaskManagerSnapshot(
         rows: [],
-        agentRows: [],
         aggregateRows: [],
         total: .zero,
         sampledAt: nil
     )
 
     let rows: [CmuxTaskManagerRow]
-    let agentRows: [CmuxTaskManagerRow]
     let aggregateRows: [CmuxTaskManagerRow]
     let total: CmuxTaskManagerResources
     let sampledAt: Date?
@@ -18,7 +16,6 @@ struct CmuxTaskManagerSnapshot {
     var hasLoadedResourceUsage: Bool {
         sampledAt != nil
             || !rows.isEmpty
-            || !agentRows.isEmpty
             || !aggregateRows.isEmpty
     }
 
@@ -31,13 +28,11 @@ struct CmuxTaskManagerSnapshot {
 
     init(
         rows: [CmuxTaskManagerRow],
-        agentRows: [CmuxTaskManagerRow] = [],
         aggregateRows: [CmuxTaskManagerRow],
         total: CmuxTaskManagerResources,
         sampledAt: Date?
     ) {
         self.rows = rows
-        self.agentRows = agentRows
         self.aggregateRows = aggregateRows
         self.total = total
         self.sampledAt = sampledAt
@@ -45,13 +40,11 @@ struct CmuxTaskManagerSnapshot {
 
     init(
         rows: [CmuxTaskManagerRow],
-        agentRows: [CmuxTaskManagerRow] = [],
         total: CmuxTaskManagerResources,
         sampledAt: Date?
     ) {
         self.init(
             rows: rows,
-            agentRows: agentRows,
             aggregateRows: Self.programAggregateRows(from: rows),
             total: total,
             sampledAt: sampledAt
@@ -68,88 +61,11 @@ struct CmuxTaskManagerSnapshot {
         for window in windows {
             Self.appendWindow(window, to: &rows)
         }
-        let agentRows = Self.agentRows(from: payload["coding_agents"] as? [[String: Any]] ?? [])
-        self.rows = Self.rowsWithAgentAssets(
-            rows,
-            assetNameByProcessID: Self.agentAssetNameByProcessID(from: agentRows)
-        )
-        self.agentRows = agentRows
+        self.rows = rows
         let programTotalPayloads = payload["program_totals"] as? [[String: Any]] ?? []
         self.aggregateRows = programTotalPayloads.isEmpty
             ? Self.programAggregateRows(from: self.rows)
             : Self.programAggregateRows(fromPayloads: programTotalPayloads)
-    }
-
-    private static func agentRows(from payloads: [[String: Any]]) -> [CmuxTaskManagerRow] {
-        payloads.compactMap { payload in
-            guard let id = nonEmptyString(payload["id"]),
-                  let title = nonEmptyString(payload["display_name"]) else { return nil }
-            let resources = CmuxTaskManagerResources(payload["resources"] as? [String: Any] ?? [:])
-            guard resources.processCount > 0 else { return nil }
-            return CmuxTaskManagerRow(
-                id: "codingAgentAggregate:\(id)",
-                kind: .codingAgentAggregate,
-                level: 0,
-                title: title,
-                detail: processCountDetail(resources.processCount),
-                resources: resources,
-                isDimmed: false,
-                workspaceId: nil,
-                surfaceId: nil,
-                terminalSurfaceId: nil,
-                processId: nil,
-                rootProcessIds: resources.processIds,
-                foregroundProcessGroupIds: [],
-                agentAssetName: nonEmptyString(payload["asset_name"])
-            )
-        }
-    }
-
-    private static func agentAssetNameByProcessID(from agentRows: [CmuxTaskManagerRow]) -> [Int: String] {
-        var assetNameByProcessID: [Int: String] = [:]
-        for row in agentRows {
-            guard let assetName = row.agentAssetName else { continue }
-            for processID in row.resources.processIds {
-                assetNameByProcessID[processID] = assetName
-            }
-        }
-        return assetNameByProcessID
-    }
-
-    private static func rowsWithAgentAssets(
-        _ rows: [CmuxTaskManagerRow],
-        assetNameByProcessID: [Int: String]
-    ) -> [CmuxTaskManagerRow] {
-        guard !assetNameByProcessID.isEmpty else { return rows }
-        return rows.map { row in
-            if row.agentAssetName != nil {
-                return row
-            }
-            guard row.kind != .window else {
-                return row
-            }
-
-            var assetNames = Set<String>()
-            for processID in row.resources.processIds {
-                if let assetName = assetNameByProcessID[processID] {
-                    assetNames.insert(assetName)
-                }
-            }
-            if let processID = row.processId,
-               let assetName = assetNameByProcessID[processID] {
-                assetNames.insert(assetName)
-            }
-            for processID in row.rootProcessIds {
-                if let assetName = assetNameByProcessID[processID] {
-                    assetNames.insert(assetName)
-                }
-            }
-
-            guard assetNames.count == 1, let assetName = assetNames.first else {
-                return row
-            }
-            return row.withAgentAssetName(assetName)
-        }
     }
 
     private struct ProgramAggregate {
@@ -211,8 +127,7 @@ struct CmuxTaskManagerSnapshot {
                     terminalSurfaceId: nil,
                     processId: nil,
                     rootProcessIds: processIds,
-                    foregroundProcessGroupIds: [],
-                    agentAssetName: agentAssetName(for: [aggregate.title])
+                    foregroundProcessGroupIds: []
                 )
             }
     }
@@ -236,8 +151,7 @@ struct CmuxTaskManagerSnapshot {
                 terminalSurfaceId: nil,
                 processId: nil,
                 rootProcessIds: resources.processIds,
-                foregroundProcessGroupIds: [],
-                agentAssetName: agentAssetName(for: [title])
+                foregroundProcessGroupIds: []
             )
         }
     }
@@ -323,8 +237,7 @@ struct CmuxTaskManagerSnapshot {
             title: title,
             detail: detail,
             isDimmed: bool(tag["visible"]) == false,
-            workspaceId: workspaceId,
-            agentAssetName: agentAssetName(for: [key, value])
+            workspaceId: workspaceId
         ))
 
         let processes = tag["processes"] as? [[String: Any]] ?? []
@@ -374,8 +287,7 @@ struct CmuxTaskManagerSnapshot {
             detail: detailParts.joined(separator: " / "),
             workspaceId: workspaceId,
             surfaceId: surfaceId,
-            terminalSurfaceId: terminalSurfaceId,
-            agentAssetName: agentAssetName(for: [title])
+            terminalSurfaceId: terminalSurfaceId
         ))
 
         let webviews = surface["webviews"] as? [[String: Any]] ?? []
@@ -473,11 +385,7 @@ struct CmuxTaskManagerSnapshot {
             surfaceId: processSurfaceId,
             terminalSurfaceId: processTerminalSurfaceId,
             processId: pid,
-            rootProcessIds: processRootIds,
-            agentAssetName: agentAssetName(for: [
-                nonEmptyString(process["name"]),
-                nonEmptyString(process["path"]).map { URL(fileURLWithPath: $0).lastPathComponent }
-            ])
+            rootProcessIds: processRootIds
         )
         rows.append(processRow)
 
@@ -508,8 +416,7 @@ struct CmuxTaskManagerSnapshot {
         terminalSurfaceId: UUID? = nil,
         processId: Int? = nil,
         rootProcessIds: [Int]? = nil,
-        foregroundProcessGroupIds: [Int]? = nil,
-        agentAssetName: String? = nil
+        foregroundProcessGroupIds: [Int]? = nil
     ) -> CmuxTaskManagerRow {
         CmuxTaskManagerRow(
             id: rowID(payload, kind: kind, context: context),
@@ -524,8 +431,7 @@ struct CmuxTaskManagerSnapshot {
             terminalSurfaceId: terminalSurfaceId,
             processId: processId,
             rootProcessIds: rootProcessIds ?? intArray(payload["top_level_pids"]),
-            foregroundProcessGroupIds: foregroundProcessGroupIds ?? intArray(payload["foreground_pgids"]),
-            agentAssetName: agentAssetName
+            foregroundProcessGroupIds: foregroundProcessGroupIds ?? intArray(payload["foreground_pgids"])
         )
     }
 
@@ -583,11 +489,6 @@ struct CmuxTaskManagerSnapshot {
     private static func uuid(_ raw: Any?) -> UUID? {
         guard let value = nonEmptyString(raw) else { return nil }
         return UUID(uuidString: value)
-    }
-
-    private static func agentAssetName(for candidates: [String?]) -> String? {
-        _ = candidates
-        return nil
     }
 
     private static func bool(_ raw: Any?) -> Bool {

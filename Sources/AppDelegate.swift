@@ -12702,7 +12702,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 if didSplit { onExecuted?() }
                 return didSplit
             }
-        case .command, .agent, .workspaceCommand:
+        case .command, .workspaceCommand:
             guard let cmuxConfigStore = context.cmuxConfigStore else {
                 return false
             }

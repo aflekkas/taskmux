@@ -71,7 +71,6 @@ final class CmuxTaskManagerModel: ObservableObject {
     private let terminationGraceInterval: TimeInterval = 2.0
 
     private(set) var sortedRows: [CmuxTaskManagerRow] = []
-    private(set) var sortedAgentRows: [CmuxTaskManagerRow] = []
     private(set) var sortedAggregateRows: [CmuxTaskManagerRow] = []
 
     init() {
@@ -258,7 +257,6 @@ final class CmuxTaskManagerModel: ObservableObject {
 
     private func updateSortedRows() {
         sortedRows = sortOrder.sortedRows(snapshot.rows)
-        sortedAgentRows = sortOrder.sortedRows(snapshot.agentRows)
         sortedAggregateRows = sortOrder.sortedRows(snapshot.aggregateRows)
     }
 
