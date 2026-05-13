@@ -111,7 +111,6 @@ struct TitlebarControlsStyleConfig {
 }
 
 final class TitlebarControlsViewModel: ObservableObject {
-    weak var notificationsAnchorView: NSView?
 }
 
 enum TitlebarControlsVisibilityMode {
@@ -120,10 +119,8 @@ enum TitlebarControlsVisibilityMode {
 }
 
 struct TitlebarControlsView: View {
-    @ObservedObject var notificationStore: TerminalNotificationStore
     @ObservedObject var viewModel: TitlebarControlsViewModel
     let onToggleSidebar: () -> Void
-    let onToggleNotifications: () -> Void
     let onNewTab: () -> Void
     var visibilityMode: TitlebarControlsVisibilityMode = .onHover
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
@@ -166,9 +163,7 @@ struct TitlebarControlsView: View {
 }
 
 struct HiddenTitlebarSidebarControlsView: View {
-    @ObservedObject var notificationStore: TerminalNotificationStore
     let onToggleSidebar: () -> Void
-    let onToggleNotifications: (NSView?) -> Void
     let onNewTab: () -> Void
     @StateObject private var viewModel = TitlebarControlsViewModel()
     @State private var isHoveringHost = false
@@ -205,10 +200,8 @@ struct HiddenTitlebarSidebarControlsView: View {
             .allowsHitTesting(false)
 
             TitlebarControlsView(
-                notificationStore: notificationStore,
                 viewModel: viewModel,
                 onToggleSidebar: onToggleSidebar,
-                onToggleNotifications: {},
                 onNewTab: onNewTab,
                 visibilityMode: .alwaysVisible
             )

@@ -1,21 +1,15 @@
 import AppKit
-import Combine
 import Foundation
 
 @MainActor
 final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let menu = NSMenu(title: "cmux")
-    private let notificationStore: TerminalNotificationStore
     private let onShowGlobalSearch: (NSStatusBarButton, (() -> Void)?) -> Void
     private let onShowMainWindow: () -> Void
-    private let onShowNotifications: () -> Void
-    private let onOpenNotification: (TerminalNotification) -> Void
-    private let onJumpToLatestUnread: () -> Void
     private let onOpenTaskManager: () -> Void
     private let onOpenPreferences: () -> Void
     private let onQuitApp: () -> Void
-    private var notificationMenuSnapshotCancellable: AnyCancellable?
     private let buildHintTitle: String?
 
     private let stateHintItem = NSMenuItem(title: String(localized: "statusMenu.noUnread", defaultValue: "No unread notifications"), action: nil, keyEquivalent: "")
@@ -26,24 +20,15 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let preferencesItem = NSMenuItem(title: String(localized: "menu.preferences", defaultValue: "Preferences…"), action: nil, keyEquivalent: "")
     private let quitItem = NSMenuItem(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux"), action: nil, keyEquivalent: "")
 
-    private var notificationItems: [NSMenuItem] = []
     init(
-        notificationStore: TerminalNotificationStore,
         onShowGlobalSearch: @escaping (NSStatusBarButton, (() -> Void)?) -> Void,
         onShowMainWindow: @escaping () -> Void,
-        onShowNotifications: @escaping () -> Void,
-        onOpenNotification: @escaping (TerminalNotification) -> Void,
-        onJumpToLatestUnread: @escaping () -> Void,
         onOpenTaskManager: @escaping () -> Void,
         onOpenPreferences: @escaping () -> Void,
         onQuitApp: @escaping () -> Void
     ) {
-        self.notificationStore = notificationStore
         self.onShowGlobalSearch = onShowGlobalSearch
         self.onShowMainWindow = onShowMainWindow
-        self.onShowNotifications = onShowNotifications
-        self.onOpenNotification = onOpenNotification
-        self.onJumpToLatestUnread = onJumpToLatestUnread
         self.onOpenTaskManager = onOpenTaskManager
         self.onOpenPreferences = onOpenPreferences
         self.onQuitApp = onQuitApp
@@ -61,12 +46,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
             button.action = #selector(statusItemButtonAction(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-
-        notificationMenuSnapshotCancellable = notificationStore.$notificationMenuSnapshot
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] snapshot in
-                self?.refreshUI(snapshot: snapshot)
-            }
 
         refreshUI()
     }
@@ -117,24 +96,17 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     }
 
     func removeFromMenuBar() {
-        notificationMenuSnapshotCancellable?.cancel()
-        notificationMenuSnapshotCancellable = nil
         statusItem.menu = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
     private func refreshUI() {
-        refreshUI(snapshot: NotificationMenuSnapshot.empty)
-    }
-
-    private func refreshUI(snapshot: NotificationMenuSnapshot) {
         let displayedUnreadCount = 0
 
         stateHintItem.title = String(localized: "statusMenu.ready", defaultValue: "Ready")
         showMainWindowItem.isHidden = !MenuBarOnlySettings.shouldShowMainWindowMenuItem()
 
         applyShortcut(KeyboardShortcutSettings.menuShortcut(for: .globalSearch), to: globalSearchItem)
-        rebuildInlineNotificationItems(recentNotifications: [])
 
         if let button = statusItem.button {
             button.image = MenuBarIconRenderer.makeImage(unreadCount: displayedUnreadCount)
@@ -150,39 +122,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         }
         item.keyEquivalent = keyEquivalent
         item.keyEquivalentModifierMask = shortcut.modifierFlags
-    }
-
-    private func rebuildInlineNotificationItems(recentNotifications: [TerminalNotification]) {
-        for item in notificationItems {
-            menu.removeItem(item)
-        }
-        notificationItems.removeAll(keepingCapacity: true)
-
-        guard !recentNotifications.isEmpty else { return }
-
-        let insertionIndex = menu.index(of: preferencesItem)
-        guard insertionIndex >= 0 else { return }
-
-        for (offset, notification) in recentNotifications.enumerated() {
-            let tabTitle = AppDelegate.shared?.tabTitle(for: notification.tabId)
-            let item = makeNotificationItem(notification: notification, tabTitle: tabTitle)
-            menu.insertItem(item, at: insertionIndex + offset)
-            notificationItems.append(item)
-        }
-    }
-
-    private func makeNotificationItem(notification: TerminalNotification, tabTitle: String?) -> NSMenuItem {
-        let item = NSMenuItem(title: "", action: #selector(openNotificationItemAction(_:)), keyEquivalent: "")
-        item.target = self
-        item.attributedTitle = MenuBarNotificationLineFormatter.attributedTitle(notification: notification, tabTitle: tabTitle)
-        item.toolTip = MenuBarNotificationLineFormatter.tooltip(notification: notification, tabTitle: tabTitle)
-        item.representedObject = NotificationMenuItemPayload(notification: notification)
-        return item
-    }
-
-    @objc private func openNotificationItemAction(_ sender: NSMenuItem) {
-        guard let payload = sender.representedObject as? NotificationMenuItemPayload else { return }
-        onOpenNotification(payload.notification)
     }
 
     @objc private func statusItemButtonAction(_ sender: NSStatusBarButton) {
@@ -228,64 +167,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     }
 }
 
-private final class NotificationMenuItemPayload: NSObject {
-    let notification: TerminalNotification
-
-    init(notification: TerminalNotification) {
-        self.notification = notification
-        super.init()
-    }
-}
-
-struct NotificationMenuSnapshot: Equatable {
-    static let empty = NotificationMenuSnapshot(unreadCount: 0, hasNotifications: false, recentNotifications: [])
-
-    let unreadCount: Int
-    let hasNotifications: Bool
-    let recentNotifications: [TerminalNotification]
-
-    var hasUnreadNotifications: Bool {
-        unreadCount > 0
-    }
-
-    var stateHintTitle: String {
-        NotificationMenuSnapshotBuilder.stateHintTitle(unreadCount: unreadCount)
-    }
-}
-
-enum NotificationMenuSnapshotBuilder {
-    static let defaultInlineNotificationLimit = 6
-
-    static func make(
-        notifications: [TerminalNotification],
-        maxInlineNotificationItems: Int = defaultInlineNotificationLimit
-    ) -> NotificationMenuSnapshot {
-        let unreadCount = notifications.reduce(into: 0) { count, notification in
-            if !notification.isRead {
-                count += 1
-            }
-        }
-
-        let inlineLimit = max(0, maxInlineNotificationItems)
-        return NotificationMenuSnapshot(
-            unreadCount: unreadCount,
-            hasNotifications: !notifications.isEmpty,
-            recentNotifications: Array(notifications.prefix(inlineLimit))
-        )
-    }
-
-    static func stateHintTitle(unreadCount: Int) -> String {
-        switch unreadCount {
-        case 0:
-            return String(localized: "statusMenu.noUnread", defaultValue: "No unread notifications")
-        case 1:
-            return String(localized: "statusMenu.unreadCount.one", defaultValue: "1 unread notification")
-        default:
-            return String(localized: "statusMenu.unreadCount.other", defaultValue: "\(unreadCount) unread notifications")
-        }
-    }
-}
-
 enum MenuBarBadgeLabelFormatter {
     static func badgeText(for unreadCount: Int) -> String? {
         guard unreadCount > 0 else { return nil }
@@ -293,123 +174,6 @@ enum MenuBarBadgeLabelFormatter {
             return "9+"
         }
         return String(unreadCount)
-    }
-}
-
-enum MenuBarNotificationLineFormatter {
-    static let defaultMaxMenuTextWidth: CGFloat = 280
-    static let defaultMaxMenuTextLines = 3
-
-    static func plainTitle(notification: TerminalNotification, tabTitle: String?) -> String {
-        let dot = notification.isRead ? "  " : "● "
-        let timeText = notification.createdAt.formatted(date: .omitted, time: .shortened)
-        var lines: [String] = []
-        lines.append("\(dot)\(notification.title)  \(timeText)")
-
-        let detail = notification.body.isEmpty ? notification.subtitle : notification.body
-        if !detail.isEmpty {
-            lines.append(detail)
-        }
-
-        if let tabTitle, !tabTitle.isEmpty {
-            lines.append(tabTitle)
-        }
-
-        return lines.joined(separator: "\n")
-    }
-
-    static func menuTitle(
-        notification: TerminalNotification,
-        tabTitle: String?,
-        maxWidth: CGFloat = defaultMaxMenuTextWidth,
-        maxLines: Int = defaultMaxMenuTextLines
-    ) -> String {
-        let base = plainTitle(notification: notification, tabTitle: tabTitle)
-        return wrappedAndTruncated(base, maxWidth: maxWidth, maxLines: maxLines)
-    }
-
-    static func attributedTitle(notification: TerminalNotification, tabTitle: String?) -> NSAttributedString {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byWordWrapping
-        return NSAttributedString(
-            string: menuTitle(notification: notification, tabTitle: tabTitle),
-            attributes: [
-                .font: NSFont.menuFont(ofSize: NSFont.systemFontSize),
-                .foregroundColor: NSColor.labelColor,
-                .paragraphStyle: paragraph,
-            ]
-        )
-    }
-
-    static func tooltip(notification: TerminalNotification, tabTitle: String?) -> String {
-        plainTitle(notification: notification, tabTitle: tabTitle)
-    }
-
-    private static func wrappedAndTruncated(_ text: String, maxWidth: CGFloat, maxLines: Int) -> String {
-        let width = max(60, maxWidth)
-        let lines = max(1, maxLines)
-        let font = NSFont.menuFont(ofSize: NSFont.systemFontSize)
-        let wrapped = wrappedLines(for: text, maxWidth: width, font: font)
-        guard wrapped.count > lines else { return wrapped.joined(separator: "\n") }
-
-        var clipped = Array(wrapped.prefix(lines))
-        clipped[lines - 1] = truncateLine(clipped[lines - 1], maxWidth: width, font: font)
-        return clipped.joined(separator: "\n")
-    }
-
-    private static func wrappedLines(for text: String, maxWidth: CGFloat, font: NSFont) -> [String] {
-        let storage = NSTextStorage(string: text, attributes: [.font: font])
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(size: NSSize(width: maxWidth, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        container.lineBreakMode = .byWordWrapping
-        layout.addTextContainer(container)
-        storage.addLayoutManager(layout)
-        _ = layout.glyphRange(for: container)
-
-        let fullText = text as NSString
-        var rows: [String] = []
-        var glyphIndex = 0
-        while glyphIndex < layout.numberOfGlyphs {
-            var glyphRange = NSRange()
-            layout.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &glyphRange)
-            if glyphRange.length == 0 { break }
-
-            let charRange = layout.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-            let row = fullText.substring(with: charRange).trimmingCharacters(in: .newlines)
-            rows.append(row)
-            glyphIndex = NSMaxRange(glyphRange)
-        }
-
-        if rows.isEmpty {
-            return [text]
-        }
-        return rows
-    }
-
-    private static func truncateLine(_ line: String, maxWidth: CGFloat, font: NSFont) -> String {
-        let ellipsis = "…"
-        let full = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if full.isEmpty { return ellipsis }
-
-        if measuredWidth(full + ellipsis, font: font) <= maxWidth {
-            return full + ellipsis
-        }
-
-        var chars = Array(full)
-        while !chars.isEmpty {
-            chars.removeLast()
-            let candidateBase = String(chars).trimmingCharacters(in: .whitespacesAndNewlines)
-            let candidate = (candidateBase.isEmpty ? "" : candidateBase) + ellipsis
-            if measuredWidth(candidate, font: font) <= maxWidth {
-                return candidate
-            }
-        }
-        return ellipsis
-    }
-
-    private static func measuredWidth(_ text: String, font: NSFont) -> CGFloat {
-        (text as NSString).size(withAttributes: [.font: font]).width
     }
 }
 

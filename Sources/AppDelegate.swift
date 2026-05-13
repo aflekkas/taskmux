@@ -7147,25 +7147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func makeMenuBarExtraController() -> MenuBarExtraController {
-        let store = TerminalNotificationStore.shared
         return MenuBarExtraController(
-            notificationStore: store,
             onShowGlobalSearch: { button, onDismiss in
                 GlobalSearchCoordinator.shared.togglePalette(anchor: button, onDismiss: onDismiss)
             },
             onShowMainWindow: { [weak self] in
                 self?.showMainWindowFromMenuBar()
-            },
-            onShowNotifications: {},
-            onOpenNotification: { [weak self] notification in
-                _ = self?.openNotification(
-                    tabId: notification.tabId,
-                    surfaceId: notification.surfaceId,
-                    notificationId: notification.id
-                )
-            },
-            onJumpToLatestUnread: { [weak self] in
-                self?.jumpToLatestUnread()
             },
             onOpenTaskManager: {
                 TaskManagerWindowController.shared.show()

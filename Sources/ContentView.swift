@@ -2190,15 +2190,8 @@ struct ContentView: View {
     }
     private var fullscreenControls: some View {
         TitlebarControlsView(
-            notificationStore: TerminalNotificationStore.shared,
             viewModel: fullscreenControlsViewModel,
             onToggleSidebar: { sidebarState.toggle() },
-            onToggleNotifications: { [fullscreenControlsViewModel] in
-                AppDelegate.shared?.toggleNotificationsPopover(
-                    animated: true,
-                    anchorView: fullscreenControlsViewModel.notificationsAnchorView
-                )
-            },
             onNewTab: {
                 AppDelegate.shared?.performNewWorkspaceAction(
                     tabManager: tabManager,
@@ -9077,14 +9070,7 @@ struct VerticalTabsSidebar: View {
                 .overlay(alignment: .topLeading) {
                     if isMinimalMode {
                         HiddenTitlebarSidebarControlsView(
-                            notificationStore: notificationStore,
                             onToggleSidebar: onToggleSidebar,
-                            onToggleNotifications: { anchorView in
-                                AppDelegate.shared?.toggleNotificationsPopover(
-                                    animated: true,
-                                    anchorView: anchorView
-                                )
-                            },
                             onNewTab: onNewTab
                         )
                             .padding(
