@@ -5888,14 +5888,6 @@ struct ContentView: View {
                 CommandPaletteContextKeys.workspaceHasBelow,
                 (workspaceIndex ?? tabManager.tabs.count - 1) < tabManager.tabs.count - 1
             )
-            snapshot.setBool(
-                CommandPaletteContextKeys.workspaceCanMarkRead,
-                notificationStore.canMarkWorkspaceRead(forTabIds: [workspace.id])
-            )
-            snapshot.setBool(
-                CommandPaletteContextKeys.workspaceCanMarkUnread,
-                notificationStore.canMarkWorkspaceUnread(forTabIds: [workspace.id])
-            )
         }
 
         if let panelContext = focusedPanelContext {
@@ -5910,9 +5902,6 @@ struct ContentView: View {
             snapshot.setBool(CommandPaletteContextKeys.panelHasCustomName, workspace.panelCustomTitles[panelId] != nil)
             snapshot.setBool(CommandPaletteContextKeys.panelShouldPin, !workspace.isPanelPinned(panelId))
             snapshot.setBool(CommandPaletteContextKeys.panelCanMoveToNewWorkspace, workspace.panels.count > 1)
-            let hasUnread = workspace.manualUnreadPanelIds.contains(panelId) || notificationStore.hasUnreadNotification(forTabId: workspace.id, surfaceId: panelId)
-            snapshot.setBool(CommandPaletteContextKeys.panelHasUnread, hasUnread)
-
             if panelIsTerminal {
                 let availableTargets = terminalOpenTargets ?? TerminalDirectoryOpenTarget.availableTargets()
                 for target in TerminalDirectoryOpenTarget.commandPaletteShortcutTargets {
@@ -6381,17 +6370,6 @@ struct ContentView: View {
                 },
                 subtitle: panelSubtitle,
                 keywords: ["tab", "pin", "pinned"],
-                when: { $0.bool(CommandPaletteContextKeys.hasFocusedPanel) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.toggleTabUnread",
-                title: { context in
-                    context.bool(CommandPaletteContextKeys.panelHasUnread) ? String(localized: "command.markTabRead.title", defaultValue: "Mark Tab as Read") : String(localized: "command.markTabUnread.title", defaultValue: "Mark Tab as Unread")
-                },
-                subtitle: panelSubtitle,
-                keywords: ["tab", "read", "unread", "notification"],
                 when: { $0.bool(CommandPaletteContextKeys.hasFocusedPanel) }
             )
         )
@@ -7083,19 +7061,6 @@ struct ContentView: View {
                 panelId: panelContext.panelId,
                 pinned: !panelContext.workspace.isPanelPinned(panelContext.panelId)
             )
-        }
-        registry.register(commandId: "palette.toggleTabUnread") {
-            guard let panelContext = focusedPanelContext else {
-                NSSound.beep()
-                return
-            }
-            let hasUnread = panelContext.workspace.manualUnreadPanelIds.contains(panelContext.panelId)
-                || notificationStore.hasUnreadNotification(forTabId: panelContext.workspace.id, surfaceId: panelContext.panelId)
-            if hasUnread {
-                panelContext.workspace.markPanelRead(panelContext.panelId)
-            } else {
-                panelContext.workspace.markPanelUnread(panelContext.panelId)
-            }
         }
         registry.register(commandId: "palette.nextTabInPane") {
             tabManager.selectNextSurface()
@@ -11350,28 +11315,6 @@ private struct TabItemView: View, Equatable {
         guard let anchorIndex = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let idsToClose = tabManager.tabs.prefix(upTo: anchorIndex).map { $0.id }
         closeTabs(idsToClose, allowPinned: true)
-    }
-
-    private func markTabsRead(_ targetIds: [UUID]) {
-        for id in targetIds {
-            notificationStore.markRead(forTabId: id)
-        }
-    }
-
-    private func markTabsUnread(_ targetIds: [UUID]) {
-        for id in targetIds {
-            notificationStore.markUnread(forTabId: id)
-        }
-    }
-
-    private func clearLatestNotifications(_ targetIds: [UUID]) {
-        for id in targetIds {
-            notificationStore.clearLatestNotification(forTabId: id)
-        }
-    }
-
-    private func hasLatestNotifications(in targetIds: [UUID]) -> Bool {
-        targetIds.contains { notificationStore.latestNotification(forTabId: $0) != nil }
     }
 
     private func syncSelectionAfterMutation() {
