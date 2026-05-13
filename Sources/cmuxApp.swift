@@ -535,12 +535,14 @@ struct cmuxApp: App {
 
     @CommandsBuilder
     private var windowAndViewCommands: some Commands {
+        CommandGroup(replacing: .help) {
+            EmptyView()
+        }
         CommandGroup(after: .windowArrangement) {
             Button(String(localized: "menu.window.taskManager", defaultValue: "Task Manager...")) {
                 TaskManagerWindowController.shared.show()
             }
         }
-        helpCommands
         CommandGroup(after: .toolbar) {
             splitCommandButton(title: String(localized: "menu.view.toggleLeftSidebar", defaultValue: "Toggle Left Sidebar"), shortcut: menuShortcut(for: .toggleSidebar)) {
                 if AppDelegate.shared?.toggleSidebarInActiveMainWindow() != true {
@@ -2370,11 +2372,6 @@ private final class SidebarDebugWindowController: NSWindowController, NSWindowDe
 }
 
 private struct AboutPanelView: View {
-    @Environment(\.openURL) private var openURL
-
-    private let githubURL = URL(string: "https://github.com/aflekkas/taskmux")
-    private let docsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")
-
     private var version: String? { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String }
     private var build: String? { Bundle.main.infoDictionary?["CFBundleVersion"] as? String }
     private var commit: String? {
@@ -2399,7 +2396,7 @@ private struct AboutPanelView: View {
                     Text(String(localized: "about.appName", defaultValue: "cmux"))
                         .bold()
                         .font(.title)
-                    Text(String(localized: "about.description", defaultValue: "A Ghostty-based terminal with vertical tabs\nand a notification panel for macOS."))
+                    Text(String(localized: "about.description", defaultValue: "Taskmux workspaces for terminals, browser panes, and files."))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .font(.caption)
@@ -2424,16 +2421,6 @@ private struct AboutPanelView: View {
                 .frame(maxWidth: .infinity)
 
                 HStack(spacing: 8) {
-                    if let url = docsURL {
-                        Button(String(localized: "about.docs", defaultValue: "Docs")) {
-                            openURL(url)
-                        }
-                    }
-                    if let url = githubURL {
-                        Button(String(localized: "about.github", defaultValue: "GitHub")) {
-                            openURL(url)
-                        }
-                    }
                     Button(String(localized: "about.licenses", defaultValue: "Licenses")) {
                         AcknowledgmentsWindowController.shared.show()
                     }

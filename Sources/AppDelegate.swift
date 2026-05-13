@@ -7054,7 +7054,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         window.contentView = MainWindowHostingView(rootView: root)
 
         // Apply shared window styling.
-        attachUpdateAccessory(to: window)
         applyWindowDecorations(to: window)
 
         // Keep a strong reference so the window isn't deallocated.
@@ -10200,9 +10199,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         ], at: path)
     }
 #endif
-
-    func attachUpdateAccessory(to window: NSWindow) {
-    }
 
     func applyWindowDecorations(to window: NSWindow) {
         windowDecorationsController.apply(to: window)
