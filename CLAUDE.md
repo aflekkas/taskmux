@@ -1,4 +1,54 @@
-# cmux agent notes
+# Taskmux agent notes
+
+Taskmux is a fork of [cmux](https://github.com/manaflow-ai/cmux). Treat the
+current codebase as cmux-derived until the fork has a deliberate rename plan.
+
+## Fork direction
+
+Taskmux should make task-backed development environments first-class:
+
+- A task is the main object a user works from.
+- A task may link to an external tracker, starting with Notion.
+- A task should be able to own or discover a git branch.
+- A task should be able to own or discover a git worktree.
+- A task should map cleanly to a Taskmux workspace with terminal panes, browser
+  panes, agent sessions, and eventual PR/status metadata.
+
+The intended product chain is:
+
+```text
+Notion task -> branch -> git worktree -> Taskmux workspace -> agent sessions -> PR/status
+```
+
+Prefer changes that strengthen this model over generic terminal UI polish unless
+the polish directly supports task, branch, worktree, or agent workflows.
+
+## Fork workflow
+
+- `origin` is the Taskmux fork at `https://github.com/aflekkas/taskmux.git`.
+- `upstream` should point at `https://github.com/manaflow-ai/cmux.git` for
+  pulling upstream cmux fixes. Do not push to `upstream`.
+- Keep upstream history and submodule pins intact unless the task explicitly
+  requires changing them.
+- Do not perform a broad `cmux` -> `taskmux` rename until the app has a bundle
+  identifier, CLI, and migration plan.
+- It is fine for scripts, schemes, bundle IDs, sockets, and app names to keep
+  saying `cmux` while the fork direction is being established.
+- This fork intentionally has no hosted CI, release workflow, Homebrew publishing
+  path, GitHub review bot, or checked-in test suite right now. Do not add those
+  back without an explicit product/distribution decision.
+
+## Useful first checks
+
+```bash
+git status --short --branch
+git remote -v
+git submodule status --recursive
+```
+
+Before editing Ghostty integration or terminal rendering code, read
+`docs/ghostty-fork.md` and confirm whether the change belongs in the app layer
+or the `ghostty` submodule.
 
 ## Initial setup
 
@@ -50,8 +100,8 @@ App path:
 
 Never use `/tmp/cmux-<tag>/...` app links in chat output.
 
-For CLI or socket dogfood against a tagged Debug app, use the tag-bound helper and set `CMUX_TAG`.
-Do not use `/tmp/cmux-cli` for tagged dogfood, since that symlink points at the most recently
+For CLI or socket checks against a tagged Debug app, use the tag-bound helper and set `CMUX_TAG`.
+Do not use `/tmp/cmux-cli` for tagged checks, since that symlink points at the most recently
 reloaded build and can target the user's main app socket.
 
 ```bash
@@ -83,7 +133,7 @@ When rebuilding GhosttyKit.xcframework, always use Release optimizations:
 cd ghostty && zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
 ```
 
-When rebuilding cmuxd for release/bundling, always use ReleaseFast:
+When rebuilding cmuxd locally, use ReleaseFast:
 
 ```bash
 cd cmuxd && zig build -Doptimize=ReleaseFast
@@ -96,24 +146,6 @@ cd cmuxd && zig build -Doptimize=ReleaseFast
 ./scripts/reload.sh --tag <tag> --launch
 ```
 
-`reloadp` = kill and launch the Release app:
-
-```bash
-./scripts/reloadp.sh
-```
-
-`reloads` = kill and launch the Release app as "cmux STAGING" (isolated from production cmux):
-
-```bash
-./scripts/reloads.sh
-```
-
-`reload2` = reload both Debug and Release (tag required for Debug reload):
-
-```bash
-./scripts/reload2.sh --tag <tag>
-```
-
 For parallel/isolated builds (e.g., testing a feature alongside the main app), use `--tag` with a short descriptive name:
 
 ```bash
@@ -124,49 +156,8 @@ This creates an isolated app with its own name, bundle ID, socket, and derived d
 
 Before launching a new tagged run, clean up any older tags you started in this session (quit old tagged app + remove its `/tmp` socket/derived data).
 
-## Cloud VM secrets
-
-Cloud VM build, test, and local dev scripts use provider secrets from `~/.secrets/cmux.env`.
-
-- `E2B_API_KEY`
-- `FREESTYLE_API_KEY`
-- R2 upload vars used by `web/scripts/build-cloud-vm-images.ts` when creating Freestyle snapshots
-
-Load them with:
-
-```bash
-set -a
-source ~/.secrets/cmux.env
-set +a
-```
-
-`~/.secrets/cmuxterm-dev.env` is for local Stack/web env and does not contain the provider build keys.
-`bun dev` sources `~/.secrets/cmux.env` first when present, then `~/.secrets/cmuxterm-dev.env` so
-cmuxterm-specific Stack settings override broader cmux secrets. The web dev loader still accepts
-the legacy `~/.secret/cmuxterm.env` and `~/.secrets/cmuxterm.env` paths while machines migrate.
-
-## Backend TypeScript
-
-Default backend TypeScript to Effect. For code under `web/app/api/**`, `web/services/**`, and
-backend scripts that touch providers, databases, auth, rate limits, retries, timeouts, or telemetry,
-model workflows as `Effect.Effect` values with typed domain errors and explicit service
-dependencies. Keep Next route handlers thin: parse the request, run one Effect program at the
-boundary, map typed errors to HTTP responses, and treat unexpected defects separately.
-
-Use plain TypeScript only for trivial data shapes, constants, config files, frontend React code, or
-small glue where Effect would add ceremony without improving failure handling.
-
-Cloud VM backend logic must stay in Vercel route handlers and Effect services backed by Postgres.
 Do not reintroduce Rivet or a raw actor protocol for this feature unless a later architecture doc
 explicitly changes the control plane.
-
-Production and staging Cloud VM Postgres should use the Vercel Marketplace AWS Aurora PostgreSQL
-OIDC/RDS IAM path. Runtime env names are `CMUX_DB_DRIVER=aws-rds-iam`, `AWS_ROLE_ARN`,
-`AWS_REGION`, `PGHOST`, `PGPORT`, `PGUSER`, and `PGDATABASE`. Run production/staging migrations
-with `bun db:migrate:aws-rds-iam`; never run Drizzle migrations from Vercel build or route startup.
-Local development keeps using the `CMUX_PORT`-derived Docker Postgres path from `bun dev`.
-Cloud VM create pricing gates should use Stack Auth team payment items when enabled. Postgres remains
-the source of truth for VM lifecycle, active VM limits, idempotency, and usage events.
 
 ## Debug event log
 
@@ -175,7 +166,7 @@ in the unified DEBUG build log:
 
 This section describes the required destination and shape for debug logs when they
 are added. It is not a blanket requirement to add debug logs to every new code path.
-Most temporary probes should be added only during the dogfood debug loop and removed
+Most temporary probes should be added only during the manual debug loop and removed
 before merge.
 
 ```bash
@@ -198,20 +189,12 @@ tail -f "$(cat /tmp/cmux-last-debug-log-path 2>/dev/null || echo /tmp/cmux-debug
 - Focus events: `focus.panel`, `focus.bonsplit`, `focus.firstResponder`, `focus.moveFocus`
 - Bonsplit events: `tab.select`, `tab.close`, `tab.dragStart`, `tab.drop`, `pane.focus`, `pane.drop`, `divider.dragStart`
 
-## Regression test commit policy
-
-When adding a regression test for a bug fix, use a two-commit structure so CI proves the test catches the bug:
-
-1. **Commit 1:** Add the failing test only (no fix). CI should go red.
-2. **Commit 2:** Add the fix. CI should go green.
-
-This makes it visible in the GitHub PR UI (Commits tab, check statuses) that the test genuinely fails without the fix.
-
 ## Shared behavior policy
 
 - When a behavior is exposed through multiple entrypoints (keyboard shortcut, command palette, context menu, CLI, settings, debug menu), implement one shared action/model path and verify every entrypoint that should invoke it. Do not patch one surface while leaving the others with duplicated logic.
 - For optimistic UI or CLI updates, keep one mutation path, record pending state with a request id or previous snapshot, reconcile from the authoritative result, and handle failure with an explicit rollback or error state. Do not let each entrypoint maintain its own optimistic copy.
-- When a user says tests missed a bug, add or adjust behavior-level coverage around the exact repro path before claiming the fix is complete.
+- When a bug has a precise repro, validate the exact repro path locally before
+  claiming the fix is complete.
 
 ## Debug menu
 
@@ -236,15 +219,6 @@ The app has a **Debug** menu in the macOS menu bar (only in DEBUG builds). Use i
 - **Snapshot boundary for list subtrees.** In any SwiftUI panel whose `body` contains a `LazyVStack` / `LazyHStack` / `List` / `ForEach` of rows, no view below that boundary may hold a reference to an `ObservableObject` / `@Observable` store (no `@ObservedObject`, `@EnvironmentObject`, `@StateObject`, `@Bindable`, or even a plain `let store: SomeStore` property). Rows and drop-gaps receive immutable value snapshots plus closure action bundles only. Violating this reintroduces the "orthogonal @Published change invalidates every row and thrashes `LazyLayoutViewCache`" class of 100% CPU spin loop that hit the Sessions panel and the workspace sidebar (https://github.com/manaflow-ai/cmux/issues/2586). Reference pattern: `IndexSectionActions` / `SectionGapActions` / `SessionSearchFn` in `Sources/SessionIndexView.swift`.
 - **No state mutation inside view-body computations.** A function called from `body` (directly or through a helper) must not write `@Published` state, schedule a `Task { @MainActor in store.x = … }`, or `DispatchQueue.main.async` a store write. That creates a re-render feedback loop and pegs the main thread (same root-cause family as the snapshot-boundary rule). State-changing work triggered by "new data appeared" belongs in a `reload()` completion, a `didSet`, or a property-observer — never in the projection that feeds `ForEach`.
 
-## Test quality policy
-
-- Do not add tests that only verify source code text, method signatures, AST fragments, or grep-style patterns.
-- Do not add tests that read checked-in metadata or project files such as `Resources/Info.plist`, `project.pbxproj`, `.xcconfig`, or source files only to assert that a key, string, plist entry, or snippet exists.
-- Tests must verify observable runtime behavior through executable paths (unit/integration/e2e/CLI), not implementation shape.
-- For metadata changes, prefer verifying the built app bundle or the runtime behavior that depends on that metadata, not the checked-in source file.
-- If a behavior cannot be exercised end-to-end yet, add a small runtime seam or harness first, then test through that seam.
-- If no meaningful behavioral or artifact-level test is practical, skip the fake regression test and state that explicitly.
-
 ## Socket command threading policy
 
 - Do not use `DispatchQueue.main.sync` for high-frequency socket telemetry commands (`report_*`, `ports_kick`, status/progress/log metadata updates).
@@ -261,14 +235,17 @@ The app has a **Debug** menu in the macOS menu bar (only in DEBUG builds). Use i
 - Only explicit focus-intent commands may mutate in-app focus/selection (`window.focus`, `workspace.select/next/previous/last`, `surface.focus`, `pane.focus/last`, browser focus commands, and v1 focus equivalents).
 - All non-focus commands should preserve current user focus context while still applying data/model changes.
 
-## Testing policy
+## Validation policy
 
-**Never run tests locally.** All tests (E2E, UI, python socket tests) run via GitHub Actions or on the VM.
+Taskmux currently has no checked-in test suite and no hosted CI. Validate changes
+with the lightest local command that exercises the changed surface:
 
-- **E2E / UI tests:** trigger via `gh workflow run test-e2e.yml` (see cmuxterm-hq CLAUDE.md for details)
-- **Unit tests:** `xcodebuild -scheme cmux-unit` is safe (no app launch), but prefer CI
-- **Python socket tests (tests_v2/):** these connect to a running cmux instance's socket. Never launch an untagged `cmux DEV.app` to run them. If you must test locally, use a tagged build's socket (`/tmp/cmux-debug-<tag>.sock`) with `CMUX_SOCKET_PATH=/tmp/cmux-debug-<tag>.sock`
-- **Never `open` an untagged `cmux DEV.app`** from DerivedData. It conflicts with the user's running debug instance.
+- For compile checks, use a tagged derived data path:
+  `xcodebuild -project GhosttyTabs.xcodeproj -scheme cmux -configuration Debug -destination 'platform=macOS' -derivedDataPath /tmp/cmux-<tag> build`
+- For manual app checks, use `./scripts/reload.sh --tag <tag>` and the tag-scoped CLI
+  helper documented above.
+- Never `open` an untagged `cmux DEV.app` from DerivedData. It conflicts with the
+  user's running debug instance.
 
 ## Ghostty submodule workflow
 
@@ -301,48 +278,3 @@ cd ..
 git add ghostty
 git commit -m "Update ghostty submodule"
 ```
-
-## Release
-
-Use the `/release` command to prepare a new release. This will:
-1. Determine the new version (bumps minor by default)
-2. Gather commits since the last tag and update the changelog
-3. Update `CHANGELOG.md` (the docs changelog page at `web/app/docs/changelog/page.tsx` reads from it)
-4. Run `./scripts/bump-version.sh` to update both versions
-5. Commit, run `./scripts/release-pretag-guard.sh`, tag, and push
-
-Version bumping:
-
-```bash
-./scripts/bump-version.sh          # bump minor (0.15.0 → 0.16.0)
-./scripts/bump-version.sh patch    # bump patch (0.15.0 → 0.15.1)
-./scripts/bump-version.sh major    # bump major (0.15.0 → 1.0.0)
-./scripts/bump-version.sh 1.0.0    # set specific version
-```
-
-This updates both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (build number). The build number is auto-incremented and is required for Sparkle auto-update to work.
-
-Before creating a release tag, run:
-
-```bash
-./scripts/release-pretag-guard.sh
-```
-
-If it fails, run `./scripts/bump-version.sh`, commit the build-number bump, then retry tagging.
-
-Manual release steps (if not using the command):
-
-```bash
-./scripts/release-pretag-guard.sh
-git tag vX.Y.Z
-git push origin vX.Y.Z
-gh run watch --repo manaflow-ai/cmux
-```
-
-Notes:
-- Requires GitHub secrets: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`,
-  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
-- The release asset is `cmux-macos.dmg` attached to the tag.
-- README download button points to `releases/latest/download/cmux-macos.dmg`.
-- Versioning: bump the minor version for updates unless explicitly asked otherwise.
-- Changelog: update `CHANGELOG.md`; docs changelog is rendered from it.

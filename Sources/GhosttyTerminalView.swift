@@ -7,9 +7,7 @@ import Combine
 import CoreText
 import Darwin
 import Carbon.HIToolbox
-import Sentry
 import Bonsplit
-import CMUXAgentLaunch
 import CMUXPasteboardFidelity
 import IOSurface
 import UniformTypeIdentifiers
@@ -1915,17 +1913,12 @@ class GhosttyApp {
                 lastReportedUptime: lastScrollLagReportUptime,
                 cooldown: scrollLagReportCooldownSeconds
             ) {
-                if TelemetrySettings.enabledForCurrentLaunch {
-                    SentrySDK.capture(message: "Scroll lag detected") { scope in
-                        scope.setLevel(.warning)
-                        scope.setContext(value: [
-                            "samples": samples,
-                            "avg_ms": String(format: "%.2f", avgLag),
-                            "max_ms": String(format: "%.2f", maxLag),
-                            "threshold_ms": threshold
-                        ], key: "scroll_lag")
-                    }
-                }
+                diagnosticsCaptureWarning("Scroll lag detected", category: "terminal.scroll", data: [
+                    "samples": samples,
+                    "avg_ms": String(format: "%.2f", avgLag),
+                    "max_ms": String(format: "%.2f", maxLag),
+                    "threshold_ms": threshold
+                ], contextKey: "scroll_lag")
                 lastScrollLagReportUptime = nowUptime
             }
             // Reset stats
@@ -3670,14 +3663,7 @@ class GhosttyApp {
                           let tabId = tabManager.selectedTabId else {
                         return false
                     }
-                    // Suppress OSC notifications for workspaces with active Claude hook sessions.
-                    // The hook system manages notifications with proper lifecycle tracking;
-                    // raw OSC notifications would duplicate or outlive the structured hooks.
                     let owningManager = AppDelegate.shared?.tabManagerFor(tabId: tabId) ?? tabManager
-                    if ClaudeCodeIntegrationSettings.hooksEnabled(), let workspace = owningManager.tabs.first(where: { $0.id == tabId }),
-                       workspace.agentPIDs["claude_code"] != nil {
-                        return true
-                    }
                     let tabTitle = owningManager.titleForTab(tabId) ?? "Terminal"
                     let command = actionTitle.isEmpty ? tabTitle : actionTitle
                     let body = actionBody
@@ -3936,12 +3922,7 @@ class GhosttyApp {
             let actionBody = action.action.desktop_notification.body
                 .flatMap { String(cString: $0) } ?? ""
             performOnMain {
-                // Suppress OSC notifications for workspaces with active Claude hook sessions.
                 let owningManager = AppDelegate.shared?.tabManagerFor(tabId: tabId) ?? AppDelegate.shared?.tabManager
-                if ClaudeCodeIntegrationSettings.hooksEnabled(), let workspace = owningManager?.tabs.first(where: { $0.id == tabId }),
-                   workspace.agentPIDs["claude_code"] != nil {
-                    return
-                }
                 let tabTitle = owningManager?.titleForTab(tabId) ?? "Terminal"
                 let command = actionTitle.isEmpty ? tabTitle : actionTitle
                 let body = actionBody
@@ -5161,14 +5142,6 @@ final class TerminalSurface: Identifiable, ObservableObject {
         let socketPath = SocketControlSettings.socketPath()
         setManagedEnvironmentValue("CMUX_SOCKET_PATH", socketPath)
         setManagedEnvironmentValue("CMUX_SOCKET", "")
-        if let inheritedClaudeConfigDir = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"],
-           !inheritedClaudeConfigDir.isEmpty {
-            env["CLAUDE_CONFIG_DIR"] = ClaudeConfigDirectoryPath.preferredPath(inheritedClaudeConfigDir)
-        }
-        if let bundledCLIURL = Bundle.main.resourceURL?.appendingPathComponent("bin/cmux"),
-           FileManager.default.isExecutableFile(atPath: bundledCLIURL.path) {
-            setManagedEnvironmentValue("CMUX_BUNDLED_CLI_PATH", bundledCLIURL.path)
-        }
         if let bundleId = Bundle.main.bundleIdentifier, !bundleId.isEmpty {
             setManagedEnvironmentValue("CMUX_BUNDLE_ID", bundleId)
         }
@@ -5181,19 +5154,9 @@ final class TerminalSurface: Identifiable, ObservableObject {
             setManagedEnvironmentValue("CMUX_PORT_RANGE", String(Self.sessionPortRangeSize))
         }
 
-        let claudeHooksEnabled = ClaudeCodeIntegrationSettings.hooksEnabled()
-        if !claudeHooksEnabled {
-            setManagedEnvironmentValue("CMUX_CLAUDE_HOOKS_DISABLED", "1")
-        }
-        if let customClaudePath = ClaudeCodeIntegrationSettings.customClaudePath() {
-            setManagedEnvironmentValue("CMUX_CUSTOM_CLAUDE_PATH", customClaudePath)
-        }
-        if !CursorIntegrationSettings.hooksEnabled() {
-            setManagedEnvironmentValue("CMUX_CURSOR_HOOKS_DISABLED", "1")
-        }
-        if !GeminiIntegrationSettings.hooksEnabled() {
-            setManagedEnvironmentValue("CMUX_GEMINI_HOOKS_DISABLED", "1")
-        }
+        setManagedEnvironmentValue("CMUX_CLAUDE_HOOKS_DISABLED", "1")
+        setManagedEnvironmentValue("CMUX_CURSOR_HOOKS_DISABLED", "1")
+        setManagedEnvironmentValue("CMUX_GEMINI_HOOKS_DISABLED", "1")
 
         if let cliBinPath = Bundle.main.resourceURL?.appendingPathComponent("bin").path {
             let currentPath = env["PATH"]

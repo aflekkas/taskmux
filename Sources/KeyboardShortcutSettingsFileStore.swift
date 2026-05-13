@@ -20,8 +20,6 @@ final class CmuxSettingsFileStore {
     static let shared = CmuxSettingsFileStore()
 
     static let currentSchemaVersion = 1
-    static let schemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json"
-    private static let legacySchemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux-settings.schema.json"
     private static let releaseBundleIdentifier = "com.cmuxterm.app"
     private static let backupsDefaultsKey = "cmux.settingsFile.backups.v1"
     private static let importedManagedDefaultsDefaultsKey = "cmux.settingsFile.importedManagedDefaults.v1"
@@ -194,8 +192,7 @@ final class CmuxSettingsFileStore {
             guard let source = String(data: data, encoding: .utf8) else {
                 return data
             }
-            let updated = source.replacingOccurrences(of: Self.legacySchemaURLString, with: Self.schemaURLString)
-            return Data(updated.utf8)
+            return data
         }
         return nil
     }
@@ -398,15 +395,6 @@ final class CmuxSettingsFileStore {
         if let value = jsonBool(section["openMarkdownInCmuxViewer"]) {
             snapshot.managedUserDefaults[CmdClickMarkdownRouteSettings.key] = .bool(value)
         }
-        if let value = jsonBool(section["reorderOnNotification"]) {
-            snapshot.managedUserDefaults[WorkspaceAutoReorderSettings.key] = .bool(value)
-        }
-        if let value = jsonBool(section["iMessageMode"]) {
-            snapshot.managedUserDefaults[IMessageModeSettings.key] = .bool(value)
-        }
-        if let value = jsonBool(section["sendAnonymousTelemetry"]) {
-            snapshot.managedUserDefaults[TelemetrySettings.sendAnonymousTelemetryKey] = .bool(value)
-        }
         if let value = jsonBool(section["warnBeforeQuit"]) {
             snapshot.managedUserDefaults[QuitWarningSettings.warnBeforeQuitKey] = .bool(value)
         }
@@ -426,31 +414,8 @@ final class CmuxSettingsFileStore {
         sourcePath: String,
         snapshot: inout ResolvedSettingsSnapshot
     ) {
-        if let value = jsonBool(section["dockBadge"]) {
-            snapshot.managedUserDefaults[NotificationBadgeSettings.dockBadgeEnabledKey] = .bool(value)
-        }
         if let value = jsonBool(section["showInMenuBar"]) {
             snapshot.managedUserDefaults[MenuBarExtraSettings.showInMenuBarKey] = .bool(value)
-        }
-        if let value = jsonBool(section["unreadPaneRing"]) {
-            snapshot.managedUserDefaults[NotificationPaneRingSettings.enabledKey] = .bool(value)
-        }
-        if let value = jsonBool(section["paneFlash"]) {
-            snapshot.managedUserDefaults[NotificationPaneFlashSettings.enabledKey] = .bool(value)
-        }
-        if let raw = jsonString(section["sound"]) {
-            let allowed = Set(NotificationSoundSettings.systemSounds.map(\.value))
-            guard allowed.contains(raw) else {
-                logInvalid("notifications.sound", sourcePath: sourcePath)
-                return
-            }
-            snapshot.managedUserDefaults[NotificationSoundSettings.key] = .string(raw)
-        }
-        if let raw = jsonString(section["customSoundFilePath"]) {
-            snapshot.managedUserDefaults[NotificationSoundSettings.customFilePathKey] = .string(raw)
-        }
-        if let raw = jsonString(section["command"]) {
-            snapshot.managedUserDefaults[NotificationSoundSettings.customCommandKey] = .string(raw)
         }
     }
 
@@ -465,11 +430,6 @@ final class CmuxSettingsFileStore {
             logInvalid("terminal.showScrollBar", sourcePath: sourcePath)
         }
 
-        if let value = jsonBool(section["autoResumeAgentSessions"]) {
-            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey] = .bool(value)
-        } else if section.keys.contains("autoResumeAgentSessions") {
-            logInvalid("terminal.autoResumeAgentSessions", sourcePath: sourcePath)
-        }
     }
 
     private func parseSidebarSection(
@@ -687,18 +647,6 @@ final class CmuxSettingsFileStore {
                 logInvalid("automation.socketPassword", sourcePath: sourcePath)
                 return
             }
-        }
-        if let value = jsonBool(section["claudeCodeIntegration"]) {
-            snapshot.managedUserDefaults[ClaudeCodeIntegrationSettings.hooksEnabledKey] = .bool(value)
-        }
-        if let raw = jsonString(section["claudeBinaryPath"]) {
-            snapshot.managedUserDefaults[ClaudeCodeIntegrationSettings.customClaudePathKey] = .string(raw)
-        }
-        if let value = jsonBool(section["cursorIntegration"]) {
-            snapshot.managedUserDefaults[CursorIntegrationSettings.hooksEnabledKey] = .bool(value)
-        }
-        if let value = jsonBool(section["geminiIntegration"]) {
-            snapshot.managedUserDefaults[GeminiIntegrationSettings.hooksEnabledKey] = .bool(value)
         }
         if let value = jsonInt(section["portBase"]) {
             guard value > 0 else {
@@ -1202,8 +1150,6 @@ final class CmuxSettingsFileStore {
         let notificationCenter = notificationCenter
         let notifyScrollBar = defaultsKey == TerminalScrollBarSettings.showScrollBarKey
         var sideEffects = ManagedDefaultBatchSideEffects()
-        sideEffects.agentSessionAutoResumeDidChange =
-            defaultsKey == AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
         let language = defaultsKey == LanguageSettings.languageKey ? AppLanguage(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .system : nil
         let shouldApplyAppearance = defaultsKey == AppearanceSettings.appearanceModeKey
         let appearanceRawValue = shouldApplyAppearance ? UserDefaults.standard.string(forKey: defaultsKey) : nil
@@ -1231,16 +1177,7 @@ final class CmuxSettingsFileStore {
     }
 
     private func applyManagedDefaultBatchSideEffects(_ sideEffects: ManagedDefaultBatchSideEffects) {
-        guard sideEffects.agentSessionAutoResumeDidChange else { return }
-        let notificationCenter = notificationCenter
-        let apply = {
-            AgentSessionAutoResumeSettings.notifyDidChange(notificationCenter: notificationCenter)
-        }
-        if Thread.isMainThread {
-            apply()
-        } else {
-            DispatchQueue.main.async { apply() }
-        }
+        _ = sideEffects
     }
 
     private static func loadImportedManagedDefaults() -> [String: ManagedSettingsValue] {
@@ -1358,11 +1295,8 @@ private struct ResolvedSettingsSnapshot {
 }
 
 private struct ManagedDefaultBatchSideEffects {
-    var agentSessionAutoResumeDidChange = false
-
     mutating func merge(_ other: ManagedDefaultBatchSideEffects) {
-        agentSessionAutoResumeDidChange =
-            agentSessionAutoResumeDidChange || other.agentSessionAutoResumeDidChange
+        _ = other
     }
 }
 

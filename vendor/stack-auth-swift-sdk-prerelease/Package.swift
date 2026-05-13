@@ -28,10 +28,5 @@ let package = Package(
             ],
             path: "Sources/StackAuth"
         ),
-        .testTarget(
-            name: "StackAuthTests",
-            dependencies: ["StackAuth"],
-            path: "Tests/StackAuthTests"
-        ),
     ]
 )

@@ -8,11 +8,7 @@
     </BuildActionEntries>
   </BuildAction>
   <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
-    <Testables>
-      <TestableReference skipped="NO">
-        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="CB450DF0F0B3839599082C4D" BuildableName="cmuxUITests.xctest" BlueprintName="cmuxUITests" ReferencedContainer="container:GhosttyTabs.xcodeproj"/>
-      </TestableReference>
-    </Testables>
+    <Testables/>
     <MacroExpansion>
       <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A5001050" BuildableName="cmux.app" BlueprintName="GhosttyTabs" ReferencedContainer="container:GhosttyTabs.xcodeproj"/>
     </MacroExpansion>

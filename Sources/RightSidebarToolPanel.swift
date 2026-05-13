@@ -8,14 +8,10 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
     let panelType: PanelType = .rightSidebarTool
     let mode: RightSidebarMode
 
-    @Published private(set) var focusFlashToken: Int = 0
-
     private weak var workspace: Workspace?
     private weak var fileExplorerContainerView: FileExplorerContainerView?
-    private weak var sessionIndexFocusAnchorView: RightSidebarToolFocusAnchorView?
     private var fileExplorerStoreStorage: FileExplorerStore?
     private var fileExplorerStateStorage: FileExplorerState?
-    private var sessionIndexStoreStorage: SessionIndexStore?
     private var workspaceObservationCancellable: AnyCancellable?
 
     init(workspace: Workspace, mode: RightSidebarMode) {
@@ -46,16 +42,6 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
         return state
     }
 
-    var sessionIndexStore: SessionIndexStore {
-        if let store = sessionIndexStoreStorage { return store }
-        let store = SessionIndexStore()
-        sessionIndexStoreStorage = store
-        if let workspace {
-            syncSessionIndexRoot(from: workspace, store: store)
-        }
-        return store
-    }
-
     var displayTitle: String { mode.label }
     var displayIcon: String? { mode.symbolName }
 
@@ -69,19 +55,12 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
         fileExplorerContainerView = container
     }
 
-    fileprivate func attachSessionIndexFocusAnchor(_ anchor: RightSidebarToolFocusAnchorView?) {
-        sessionIndexFocusAnchorView = anchor
-    }
-
     func syncWorkspaceRoot(from workspace: Workspace) {
         switch mode {
         case .files, .find:
             guard let store = fileExplorerStoreStorage else { return }
             syncFileExplorerRoot(from: workspace, store: store)
-        case .sessions:
-            guard let store = sessionIndexStoreStorage else { return }
-            syncSessionIndexRoot(from: workspace, store: store)
-        case .feed, .dock:
+        case .sessions, .feed, .dock:
             break
         }
     }
@@ -100,9 +79,7 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
 
     func close() {
         fileExplorerContainerView = nil
-        sessionIndexFocusAnchorView = nil
         fileExplorerStoreStorage?.applyWorkspaceRoot(.none)
-        sessionIndexStoreStorage?.setCurrentDirectoryIfChanged(nil)
         workspaceObservationCancellable = nil
     }
 
@@ -112,11 +89,7 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
             _ = fileExplorerContainerView?.focusOutline()
         case .find:
             _ = fileExplorerContainerView?.focusSearchField()
-        case .sessions:
-            guard let anchor = sessionIndexFocusAnchorView,
-                  let window = anchor.window else { return }
-            _ = window.makeFirstResponder(anchor)
-        case .feed, .dock:
+        case .sessions, .feed, .dock:
             break
         }
     }
@@ -125,8 +98,6 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
 
     func triggerFlash(reason: WorkspaceAttentionFlashReason) {
         _ = reason
-        guard NotificationPaneFlashSettings.isEnabled() else { return }
-        focusFlashToken += 1
     }
 
     func ownedFocusIntent(for responder: NSResponder, in window: NSWindow) -> PanelFocusIntent? {
@@ -135,22 +106,15 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
         case .files, .find:
             guard fileExplorerContainerView?.ownsKeyboardFocus(responder) == true else { return nil }
             return .panel
-        case .sessions:
-            guard sessionIndexFocusAnchorView?.ownsKeyboardFocus(responder) == true else { return nil }
-            return .panel
-        case .feed, .dock:
+        case .sessions, .feed, .dock:
             return nil
         }
     }
 
     private func observeWorkspaceRootChanges(_ workspace: Workspace) {
-        workspaceObservationCancellable = Publishers.MergeMany(
-            workspace.$currentDirectory.map { _ in () }.eraseToAnyPublisher(),
-            workspace.$remoteConfiguration.map { _ in () }.eraseToAnyPublisher(),
-            workspace.$remoteConnectionState.map { _ in () }.eraseToAnyPublisher(),
-            workspace.$remoteConnectionDetail.map { _ in () }.eraseToAnyPublisher(),
-            workspace.$remoteDaemonStatus.map { _ in () }.eraseToAnyPublisher()
-        )
+        workspaceObservationCancellable = workspace.$currentDirectory
+            .map { _ in () }
+            .eraseToAnyPublisher()
         .sink { [weak self, weak workspace] _ in
             Task { @MainActor in
                 guard let self, let workspace else { return }
@@ -162,30 +126,6 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
     private func syncFileExplorerRoot(from workspace: Workspace, store: FileExplorerStore) {
         store.showHiddenFiles = true
 
-        if workspace.isRemoteWorkspace {
-            guard let configuration = workspace.remoteConfiguration,
-                  configuration.transport == .ssh else {
-                store.applyWorkspaceRoot(.none)
-                return
-            }
-            let unavailableDetail = workspace.remoteConnectionDetail ?? workspace.remoteDaemonStatus.detail
-            store.applyWorkspaceRoot(
-                .remoteSSH(
-                    workspaceId: workspace.id,
-                    connection: SSHFileExplorerConnection(
-                        destination: configuration.destination,
-                        port: configuration.port,
-                        identityFile: configuration.identityFile,
-                        sshOptions: configuration.sshOptions
-                    ),
-                    displayTarget: configuration.displayTarget,
-                    isAvailable: workspace.remoteConnectionState == .connected,
-                    unavailableDetail: unavailableDetail
-                )
-            )
-            return
-        }
-
         let directory = workspace.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !directory.isEmpty else {
             store.applyWorkspaceRoot(.none)
@@ -195,15 +135,6 @@ final class RightSidebarToolPanel: Panel, ObservableObject {
         store.applyWorkspaceRoot(.local(path: directory))
     }
 
-    private func syncSessionIndexRoot(from workspace: Workspace, store: SessionIndexStore) {
-        guard !workspace.isRemoteWorkspace else {
-            store.setCurrentDirectoryIfChanged(nil)
-            return
-        }
-
-        let directory = workspace.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.setCurrentDirectoryIfChanged(directory.isEmpty ? nil : directory)
-    }
 }
 
 struct RightSidebarToolPanelView: View {
@@ -214,24 +145,11 @@ struct RightSidebarToolPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
-    @State private var focusFlashOpacity: Double = 0.0
-    @State private var focusFlashAnimationGeneration: Int = 0
-
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: appearance.backgroundColor))
-            .overlay {
-                RoundedRectangle(cornerRadius: FocusFlashPattern.ringCornerRadius)
-                    .stroke(cmuxAccentColor().opacity(focusFlashOpacity), lineWidth: 3)
-                    .shadow(color: cmuxAccentColor().opacity(focusFlashOpacity * 0.35), radius: 10)
-                    .padding(FocusFlashPattern.ringInset)
-                    .allowsHitTesting(false)
-            }
             .simultaneousGesture(TapGesture().onEnded { requestPanelFocusIfNeeded() })
-            .onChange(of: panel.focusFlashToken) { _, _ in
-                triggerFocusFlashAnimation()
-            }
     }
 
     @ViewBuilder
@@ -258,16 +176,7 @@ struct RightSidebarToolPanelView: View {
                 onContainerChange: panel.attachFileExplorerContainer
             )
         case .sessions:
-            SessionIndexView(
-                store: panel.sessionIndexStore,
-                onResume: { entry in
-                    SessionEntryResumeCoordinator.resume(entry, tabManager: tabManager)
-                }
-            )
-            .background(
-                RightSidebarToolFocusAnchor(onViewChange: panel.attachSessionIndexFocusAnchor)
-                    .frame(width: 0, height: 0)
-            )
+            EmptyView()
         case .feed, .dock:
             EmptyView()
         }
@@ -278,106 +187,4 @@ struct RightSidebarToolPanelView: View {
         onRequestPanelFocus()
     }
 
-    private func triggerFocusFlashAnimation() {
-        focusFlashAnimationGeneration &+= 1
-        let generation = focusFlashAnimationGeneration
-        focusFlashOpacity = FocusFlashPattern.values.first ?? 0
-
-        for segment in FocusFlashPattern.segments {
-            DispatchQueue.main.asyncAfter(deadline: .now() + segment.delay) {
-                guard focusFlashAnimationGeneration == generation else { return }
-                withAnimation(focusFlashAnimation(for: segment.curve, duration: segment.duration)) {
-                    focusFlashOpacity = segment.targetOpacity
-                }
-            }
-        }
-    }
-
-    private func focusFlashAnimation(for curve: FocusFlashCurve, duration: TimeInterval) -> Animation {
-        switch curve {
-        case .easeIn:
-            return .easeIn(duration: duration)
-        case .easeOut:
-            return .easeOut(duration: duration)
-        }
-    }
-}
-
-private struct RightSidebarToolFocusAnchor: NSViewRepresentable {
-    final class Coordinator {
-        var onViewChange: (RightSidebarToolFocusAnchorView?) -> Void
-        weak var attachedView: RightSidebarToolFocusAnchorView?
-
-        init(onViewChange: @escaping (RightSidebarToolFocusAnchorView?) -> Void) {
-            self.onViewChange = onViewChange
-        }
-
-        func attach(_ view: RightSidebarToolFocusAnchorView) {
-            guard attachedView !== view else { return }
-            attachedView = view
-            onViewChange(view)
-        }
-
-        func detach(_ view: RightSidebarToolFocusAnchorView) {
-            guard attachedView === view else { return }
-            attachedView = nil
-            onViewChange(nil)
-        }
-    }
-
-    let onViewChange: (RightSidebarToolFocusAnchorView?) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onViewChange: onViewChange)
-    }
-
-    func makeNSView(context: Context) -> RightSidebarToolFocusAnchorView {
-        let view = RightSidebarToolFocusAnchorView()
-        context.coordinator.attach(view)
-        return view
-    }
-
-    func updateNSView(_ nsView: RightSidebarToolFocusAnchorView, context: Context) {
-        context.coordinator.onViewChange = onViewChange
-        context.coordinator.attach(nsView)
-    }
-
-    static func dismantleNSView(_ nsView: RightSidebarToolFocusAnchorView, coordinator: Coordinator) {
-        coordinator.detach(nsView)
-    }
-}
-
-fileprivate final class RightSidebarToolFocusAnchorView: NSView {
-    override var acceptsFirstResponder: Bool { true }
-
-    func ownsKeyboardFocus(_ responder: NSResponder) -> Bool {
-        if responder === self { return true }
-        guard let responderView = Self.view(for: responder) else { return false }
-        guard let root = focusRootView else { return false }
-        return responderView === root || responderView.isDescendant(of: root)
-    }
-
-    private static func view(for responder: NSResponder) -> NSView? {
-        if let view = responder as? NSView {
-            return view
-        }
-        if let textView = responder as? NSTextView,
-           let delegateView = textView.delegate as? NSView {
-            return delegateView
-        }
-        return nil
-    }
-
-    private var focusRootView: NSView? {
-        guard let superview else { return nil }
-        var current: NSView? = superview
-        while let view = current {
-            let typeName = String(describing: type(of: view))
-            if typeName.contains("NSHosting") || typeName.contains("ViewHost") {
-                return view
-            }
-            current = view.superview
-        }
-        return superview
-    }
 }

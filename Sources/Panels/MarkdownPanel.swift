@@ -98,8 +98,6 @@ final class MarkdownPanel: Panel, ObservableObject, FilePreviewTextEditingPanel 
 
     func triggerFlash(reason: WorkspaceAttentionFlashReason) {
         _ = reason
-        guard NotificationPaneFlashSettings.isEnabled() else { return }
-        focusFlashToken += 1
     }
 
     func setDisplayMode(_ mode: MarkdownPanelDisplayMode) {

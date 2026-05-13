@@ -18,9 +18,6 @@ enum AuthEnvironment {
         // with the installed stable app.
         return "cmux-dev"
         #else
-        if Bundle.main.bundleIdentifier == "com.cmuxterm.app.nightly" {
-            return "cmux-nightly"
-        }
         return "cmux"
         #endif
     }
@@ -32,7 +29,7 @@ enum AuthEnvironment {
     static var websiteOrigin: URL {
         resolvedURL(
             environmentKey: "CMUX_WWW_ORIGIN",
-            fallback: "https://cmux.com"
+            fallback: "https://github.com/aflekkas/taskmux"
         )
     }
 
@@ -52,27 +49,6 @@ enum AuthEnvironment {
                 fallback: defaultAPIBaseURL
             )
         )
-    }
-
-    /// Base URL for the cmux-owned cloud VM backend (`/api/vm`).
-    ///
-    /// Resolution order (first hit wins):
-    ///   1. process env `CMUX_VM_API_BASE_URL` — works when the app is launched from a shell.
-    ///   2. `~/.cmux-dev.env` file `CMUX_VM_API_BASE_URL=...` line — works regardless of how
-    ///      the app was launched (click-through, Dock, `open`, etc.). Only honored in DEBUG.
-    ///   3. VM backend dev origin (`http://localhost:$CMUX_PORT` in Debug, cmux.com in Release).
-    static var vmAPIBaseURL: URL {
-        if let overridden = ProcessInfo.processInfo.environment["CMUX_VM_API_BASE_URL"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !overridden.isEmpty,
-           let url = URL(string: overridden) {
-            return canonicalizedLoopbackURL(url)
-        }
-        if let override = devOverride(key: "CMUX_VM_API_BASE_URL"),
-           let url = URL(string: override) {
-            return canonicalizedLoopbackURL(url)
-        }
-        return canonicalizedLoopbackURL(URL(string: defaultVMAPIOrigin)!)
     }
 
     /// Look up `key=value` in `~/.cmux-dev.env` for the DEBUG build. Returns nil in Release.
@@ -120,19 +96,7 @@ enum AuthEnvironment {
            !origin.isEmpty {
             return origin
         }
-        #if DEBUG
         return "http://localhost:\(cmuxPort)"
-        #else
-        return "https://cmux.com"
-        #endif
-    }
-
-    private static var defaultVMAPIOrigin: String {
-        #if DEBUG
-        return "http://localhost:\(cmuxPort)"
-        #else
-        return "https://cmux.com"
-        #endif
     }
 
     private static var defaultAPIBaseURL: String {
@@ -141,11 +105,7 @@ enum AuthEnvironment {
            !url.isEmpty {
             return url
         }
-        #if DEBUG
         return "http://localhost:\(cmuxPort)"
-        #else
-        return "https://api.cmux.sh"
-        #endif
     }
 
     static var stackBaseURL: URL {

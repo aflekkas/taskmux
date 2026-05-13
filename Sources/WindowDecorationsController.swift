@@ -118,7 +118,6 @@ final class WindowDecorationsController {
             )
             #endif
             let controlsAreRevealed = MinimalModeSidebarChromeHoverState.shared.hoveredWindowNumber == window.windowNumber
-                || NotificationsPopoverVisibilityState.shared.isShown(in: window.windowNumber)
             if event.type == .leftMouseDown,
                isHovering,
                controlsAreRevealed,
@@ -171,7 +170,6 @@ final class WindowDecorationsController {
             locationInWindow: locationInWindow
         )
         let controlsAreRevealed = MinimalModeSidebarChromeHoverState.shared.hoveredWindowNumber == window.windowNumber
-            || NotificationsPopoverVisibilityState.shared.isShown(in: window.windowNumber)
         let actionSlot = minimalModeSidebarControlActionSlot(
             window: window,
             locationInWindow: locationInWindow
@@ -338,12 +336,6 @@ final class WindowDecorationsController {
             switch slot {
             case .toggleSidebar:
                 _ = AppDelegate.shared?.toggleSidebarInActiveMainWindow(preferredWindow: window)
-            case .showNotifications:
-                let resolvedAnchorView = anchorView ?? NotificationsAnchorRegistry.shared.closestAnchor(
-                    in: window,
-                    to: locationInWindow
-                )
-                AppDelegate.shared?.toggleNotificationsPopover(animated: true, anchorView: resolvedAnchorView)
             case .newTab:
                 let targetTabManager = AppDelegate.shared?.activeTabManagerForCommands(preferredWindow: window)
                 _ = AppDelegate.shared?.performNewWorkspaceAction(

@@ -228,18 +228,7 @@ final class TerminalPanel: Panel, ObservableObject {
     }
 
     func triggerFlash(reason: WorkspaceAttentionFlashReason) {
-        guard NotificationPaneFlashSettings.isEnabled() else { return }
-
-        switch TmuxOverlayExperimentSettings.target() {
-        case .bonsplitPane:
-            if let onRequestWorkspacePaneFlash {
-                onRequestWorkspacePaneFlash(reason)
-                return
-            }
-            hostedView.triggerFlash(style: GhosttySurfaceScrollView.flashStyle(for: reason))
-        case .surface, .tmuxActivePane:
-            hostedView.triggerFlash(style: GhosttySurfaceScrollView.flashStyle(for: reason))
-        }
+        _ = reason
     }
 
     func triggerNotificationDismissFlash() {

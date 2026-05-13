@@ -79,20 +79,6 @@ enum CmuxSocketEventMapper {
             publishResult(name: "pane.broken", category: "pane", method: method, params: params, result: result)
         case "pane.join":
             publishResult(name: "pane.joined", category: "pane", method: method, params: params, result: result)
-        case "notification.create", "notification.create_for_caller", "notification.create_for_surface", "notification.create_for_target":
-            publishResult(name: "notification.requested", category: "notification", method: method, params: redactedNotificationParams(params), result: result)
-        case "notification.clear":
-            publishResult(name: "notification.clear_requested", category: "notification", method: method, params: params, result: result)
-        case "notification.dismiss":
-            publishResult(name: "notification.dismiss_requested", category: "notification", method: method, params: params, result: result)
-        case "notification.mark_read":
-            publishResult(name: "notification.mark_read_requested", category: "notification", method: method, params: params, result: result)
-        case "notification.open":
-            publishResult(name: "notification.open_requested", category: "notification", method: method, params: params, result: result)
-        case "notification.jump_to_unread":
-            publishResult(name: "notification.jump_to_unread_requested", category: "notification", method: method, params: params, result: result)
-        case "feed.permission.reply", "feed.question.reply", "feed.exit_plan.reply":
-            publishResult(name: "feed.item.resolved", category: "feed", method: method, params: params, result: result)
         case "app.focus_override.set":
             publishResult(name: "app.focus_override.changed", category: "app", method: method, params: params, result: result)
         case "app.simulate_active":
@@ -129,21 +115,6 @@ enum CmuxSocketEventMapper {
             CmuxEventBus.shared.publish(name: "surface.input_sent", category: "surface", source: "socket.v1", payload: payload)
         case "send_key", "send_key_surface":
             CmuxEventBus.shared.publish(name: "surface.key_sent", category: "surface", source: "socket.v1", payload: payload)
-        case "notify_surface":
-            var payloadWithSurface = payload
-            let surfaceId = firstUUID(in: args)
-            payloadWithSurface["surface_id"] = surfaceId ?? NSNull()
-            CmuxEventBus.shared.publish(
-                name: "notification.requested",
-                category: "notification",
-                source: "socket.v1",
-                surfaceId: surfaceId,
-                payload: payloadWithSurface
-            )
-        case "notify", "notify_target", "notify_target_async":
-            CmuxEventBus.shared.publish(name: "notification.requested", category: "notification", source: "socket.v1", workspaceId: firstUUID(in: args), payload: payload)
-        case "clear_notifications":
-            CmuxEventBus.shared.publish(name: "notification.clear_requested", category: "notification", source: "socket.v1", workspaceId: firstUUID(in: args), payload: payload)
         case "set_status", "report_meta", "report_meta_block":
             CmuxEventBus.shared.publish(name: "sidebar.metadata.updated", category: "sidebar", source: "socket.v1", workspaceId: firstUUID(in: args), payload: payload)
         case "clear_status", "clear_meta", "clear_meta_block":
@@ -205,27 +176,9 @@ enum CmuxSocketEventMapper {
         return out
     }
 
-    static func redactedNotificationParams(_ params: [String: Any]) -> [String: Any] {
-        var out = params
-        var redactedFields = (out["redacted_fields"] as? [String]) ?? []
-        for key in ["title", "subtitle", "body"] {
-            if let text = out[key] as? String {
-                out[key] = NSNull()
-                out["\(key)_length"] = text.count
-                if !redactedFields.contains(key) {
-                    redactedFields.append(key)
-                }
-            }
-        }
-        if !redactedFields.isEmpty {
-            out["redacted_fields"] = redactedFields
-        }
-        return out
-    }
-
     private static func redactedV1Args(name: String, args: String) -> String {
         switch name {
-        case "send", "send_surface", "notify", "notify_surface", "notify_target", "notify_target_async":
+        case "send", "send_surface":
             return "<redacted>"
         default:
             return args

@@ -1,5 +1,18 @@
 import Foundation
 
+struct MainVerticalState: Codable {
+    var mainSurfaceId: String
+    var rightColumnSurfaceIds: [String]
+    var lastColumnSurfaceId: String? = nil
+}
+
+struct TmuxCompatStore: Codable {
+    var buffers: [String: String] = [:]
+    var mainVerticalLayouts: [String: MainVerticalState] = [:]
+    var lastSplitSurface: [String: String] = [:]
+    var hooks: [String: String] = [:]
+}
+
 extension CMUXCLI {
     func tmuxEnrichContextWithGeometry(
         _ context: inout [String: String],
@@ -127,66 +140,6 @@ extension CMUXCLI {
             return basename.isEmpty ? trimmed : basename
         }
         return nil
-    }
-
-    func tmuxFormatRequestsPaneCommand(_ format: String?) -> Bool {
-        guard let format else { return false }
-        return format.contains("#{pane_start_command}") || format.contains("#{pane_current_command}")
-    }
-
-    func tmuxLegacyOMXHudStartCommand(
-        workspaceId: String,
-        surfaceId: String,
-        client: SocketClient
-    ) -> String? {
-        guard let payload = try? client.sendV2(method: "surface.read_text", params: [
-            "workspace_id": workspaceId,
-            "surface_id": surfaceId,
-            "lines": 4
-        ]),
-            let text = payload["text"] as? String else {
-            return nil
-        }
-        let lower = text.lowercased()
-        guard lower.contains("[omx#"),
-              lower.contains("turns:"),
-              lower.contains("session:") else {
-            return nil
-        }
-        return "node omx.js hud --watch"
-    }
-
-    func tmuxPaneLooksLikeOMXHud(workspaceId: String, paneId: String, client: SocketClient) -> Bool {
-        guard let surfaceId = try? tmuxSelectedSurfaceId(
-            workspaceId: workspaceId,
-            paneId: paneId,
-            client: client
-        ) else {
-            return false
-        }
-
-        if let payload = try? client.sendV2(method: "surface.list", params: ["workspace_id": workspaceId]),
-           let surfaces = payload["surfaces"] as? [[String: Any]],
-           let surface = surfaces.first(where: { ($0["id"] as? String) == surfaceId }) {
-            let paneStartCommand = [
-                surface["tmux_start_command"],
-                surface["pane_start_command"],
-                surface["initial_command"]
-            ]
-                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .first { !$0.isEmpty }
-
-            if let paneStartCommand,
-               tmuxCommandLooksLikeOMXHud(tmuxShellWords(paneStartCommand)) {
-                return true
-            }
-        }
-
-        return tmuxLegacyOMXHudStartCommand(
-            workspaceId: workspaceId,
-            surfaceId: surfaceId,
-            client: client
-        ) != nil
     }
 
     func tmuxStartupScript(commandTokens: [String], cwd: String?) -> String? {
@@ -339,23 +292,4 @@ extension CMUXCLI {
         return result
     }
 
-    func prependPathEntries(_ newEntries: [String], to currentPath: String?) -> String {
-        var ordered: [String] = []
-        var seen: Set<String> = []
-        for entry in newEntries + (currentPath?.split(separator: ":").map(String.init) ?? []) where !entry.isEmpty {
-            if seen.insert(entry).inserted {
-                ordered.append(entry)
-            }
-        }
-        return ordered.joined(separator: ":")
-    }
-
-    struct TmuxCompatFocusedContext {
-        let socketPath: String
-        let workspaceId: String
-        let windowId: String?
-        let paneHandle: String
-        let paneId: String?
-        let surfaceId: String?
-    }
 }

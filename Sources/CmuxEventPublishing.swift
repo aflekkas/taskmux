@@ -1,5 +1,4 @@
 import Foundation
-import CMUXWorkstream
 
 extension CmuxEventBus {
     func publishWorkspaceCreated(
@@ -250,28 +249,6 @@ extension CmuxEventBus {
     }
 
     func publishNotificationChanges(oldValue: [TerminalNotification], newValue: [TerminalNotification]) {
-        let oldById = Dictionary(uniqueKeysWithValues: oldValue.map { ($0.id, $0) })
-        let newIds = Set(newValue.map(\.id))
-        let removed = oldValue.filter { !newIds.contains($0.id) }
-        for notification in removed {
-            publishNotificationRemoved(notification)
-        }
-        for notification in newValue {
-            if let old = oldById[notification.id] {
-                if !old.isRead, notification.isRead {
-                    publishNotificationRead(
-                        ids: [notification.id.uuidString],
-                        workspaceId: notification.tabId,
-                        surfaceId: notification.surfaceId
-                    )
-                }
-            } else {
-                let replacedIds = removed
-                    .filter { $0.tabId == notification.tabId && $0.surfaceId == notification.surfaceId }
-                    .map { $0.id.uuidString }
-                publishNotificationCreated(notification, delivery: "store", replacedNotificationIds: replacedIds)
-            }
-        }
     }
 
     func publishNotificationCreated(
@@ -279,144 +256,15 @@ extension CmuxEventBus {
         delivery: String,
         replacedNotificationIds: [String]
     ) {
-        publishNotificationLifecycle(
-            name: "notification.created",
-            notification: notification,
-            payload: [
-                "delivery": delivery,
-                "replaced_notification_ids": replacedNotificationIds
-            ]
-        )
     }
 
     func publishNotificationRead(ids: [String], workspaceId: UUID?, surfaceId: UUID?) {
-        guard !ids.isEmpty else { return }
-        publish(
-            name: "notification.read",
-            category: "notification",
-            source: "notification.store",
-            workspaceId: workspaceId?.uuidString,
-            surfaceId: surfaceId?.uuidString,
-            payload: [
-                "notification_ids": ids,
-                "count": ids.count
-            ]
-        )
     }
 
     func publishNotificationRemoved(_ notification: TerminalNotification) {
-        publishNotificationLifecycle(
-            name: "notification.removed",
-            notification: notification
-        )
     }
 
     func publishNotificationCleared(ids: [String], workspaceId: UUID?, surfaceId: UUID?) {
-        guard !ids.isEmpty else { return }
-        publish(
-            name: "notification.cleared",
-            category: "notification",
-            source: "notification.store",
-            workspaceId: workspaceId?.uuidString,
-            surfaceId: surfaceId?.uuidString,
-            payload: [
-                "notification_ids": ids,
-                "count": ids.count
-            ]
-        )
-    }
-
-    private func publishNotificationLifecycle(
-        name: String,
-        notification: TerminalNotification,
-        payload extraPayload: [String: Any] = [:]
-    ) {
-        var payload = CmuxSocketEventMapper.redactedNotificationParams([
-            "notification_id": notification.id.uuidString,
-            "workspace_id": notification.tabId.uuidString,
-            "surface_id": notification.surfaceId?.uuidString ?? NSNull(),
-            "title": notification.title,
-            "subtitle": notification.subtitle,
-            "body": notification.body,
-            "created_at": notification.createdAt,
-            "is_read": notification.isRead
-        ])
-        extraPayload.forEach { payload[$0.key] = $0.value }
-        publish(
-            name: name,
-            category: "notification",
-            source: "notification.store",
-            workspaceId: notification.tabId.uuidString,
-            surfaceId: notification.surfaceId?.uuidString,
-            payload: payload
-        )
-    }
-
-    // swiftlint:disable:next discouraged_optional_collection
-    func publishWorkstreamEvent(_ event: WorkstreamEvent, phase: String, result: [String: Any]? = nil) {
-        var payload = Self.workstreamPayload(event)
-        payload["phase"] = phase
-        if let result {
-            payload["result"] = result
-        }
-
-        publish(
-            name: "agent.hook.\(event.hookEventName.rawValue)",
-            category: "agent",
-            source: event.source,
-            workspaceId: event.workspaceId,
-            payload: payload
-        )
-
-        publish(
-            name: "feed.item.\(phase)",
-            category: "feed",
-            source: event.source,
-            workspaceId: event.workspaceId,
-            payload: payload
-        )
-    }
-
-    static func workstreamPayload(_ event: WorkstreamEvent) -> [String: Any] {
-        var payload: [String: Any] = [
-            "session_id": event.sessionId,
-            "hook_event_name": event.hookEventName.rawValue,
-            "_source": event.source,
-            "workspace_id": event.workspaceId ?? NSNull(),
-            "cwd": event.cwd ?? NSNull(),
-            "tool_name": event.toolName ?? NSNull(),
-            "_opencode_request_id": event.requestId ?? NSNull(),
-            "_ppid": event.ppid ?? NSNull(),
-            "_received_at": Self.isoTimestamp(event.receivedAt)
-        ]
-        var redactedFields: [String] = []
-        if let toolInputJSON = event.toolInputJSON {
-            payload["tool_input"] = NSNull()
-            payload["tool_input_length"] = toolInputJSON.count
-            redactedFields.append("tool_input")
-        }
-        if let context = event.context, !context.isEmpty {
-            payload["context"] = NSNull()
-            if let contextLength = encodedByteCount(context) {
-                payload["context_length"] = contextLength
-            }
-            redactedFields.append("context")
-        }
-        if let extraFieldsJSON = event.extraFieldsJSON {
-            payload["extra_fields"] = NSNull()
-            payload["extra_fields_length"] = extraFieldsJSON.count
-            redactedFields.append("extra_fields")
-        }
-        if !redactedFields.isEmpty {
-            payload["redacted_fields"] = redactedFields
-        }
-        return payload
-    }
-
-    private static func encodedByteCount<T: Encodable>(_ value: T) -> Int? {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return try? encoder.encode(value).count
     }
 
     private func workspacePayload(

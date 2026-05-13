@@ -1,6 +1,5 @@
 import AppKit
 import Carbon.HIToolbox
-import CMUXWorkstream
 import Foundation
 import Bonsplit
 import WebKit
@@ -148,13 +147,9 @@ class TerminalController {
         "browser.focus_webview",
         "browser.focus",
         "browser.tab.switch",
-        "notification.open",
-        "notification.jump_to_unread",
         "debug.command_palette.toggle",
-        "debug.notification.focus",
         "debug.app.activate",
-        "debug.right_sidebar.focus",
-        "feed.jump"
+        "debug.right_sidebar.focus"
     ]
 
     enum V2HandleKind: String, CaseIterable {
@@ -392,10 +387,6 @@ class TerminalController {
             outsideSuppressed: Self.shouldSuppressSocketCommandActivation(),
             outsideAllowsFocus: Self.socketCommandAllowsInAppFocusMutations()
         )
-    }
-
-    static func debugNotifyTargetQueuedResponseForTesting(_ args: String) -> String {
-        Self.shared.notifyTargetQueued(args)
     }
 #endif
 
@@ -703,7 +694,7 @@ class TerminalController {
         extra: [String: Any] = [:]
     ) {
         let data = socketListenerEventData(stage: stage, errnoCode: errnoCode, extra: extra)
-        sentryBreadcrumb(message, category: "socket", data: data)
+        diagnosticsBreadcrumb(message, category: "socket", data: data)
         guard Self.shouldCaptureSocketListenerFailure(
             message: message,
             stage: stage,
@@ -712,7 +703,7 @@ class TerminalController {
         ) else {
             return
         }
-        sentryCaptureError(message, category: "socket", data: data, contextKey: "socket_listener")
+        diagnosticsCaptureError(message, category: "socket", data: data, contextKey: "socket_listener")
     }
 
     private nonisolated static func shouldCaptureSocketListenerFailure(
@@ -1078,7 +1069,7 @@ class TerminalController {
                errnoCode: failedErrnoCode
            ),
            fallbackPath != failedPath {
-            sentryBreadcrumb(
+            diagnosticsBreadcrumb(
                 "socket.listener.path.fallback",
                 category: "socket",
                 data: [
@@ -1170,7 +1161,7 @@ class TerminalController {
         listenerActivated = true
         let listenerSocket = newServerSocket
         print("TerminalController: Listening on \(activeSocketPath)")
-        sentryBreadcrumb(
+        diagnosticsBreadcrumb(
             "socket.listener.listening",
             category: "socket",
             data: [
@@ -1372,7 +1363,7 @@ class TerminalController {
             print(
                 "TerminalController: Failed to set socket permissions to \(String(permissions, radix: 8)) for \(currentSocketPath)"
             )
-            sentryBreadcrumb(
+            diagnosticsBreadcrumb(
                 "socket.listener.permissions.failed",
                 category: "socket",
                 data: socketListenerEventData(
@@ -1513,11 +1504,6 @@ class TerminalController {
         "auth.status",
         "auth.begin_sign_in",
         "auth.sign_out",
-        "feedback.submit",
-        "feed.push",
-        "feed.permission.reply",
-        "feed.question.reply",
-        "feed.exit_plan.reply",
         "browser.profiles.list",
         "browser.profiles.create",
         "browser.profiles.rename",
@@ -1528,7 +1514,7 @@ class TerminalController {
     ]
 
     private nonisolated static func executionPolicy(forV2Method method: String) -> SocketCommandExecutionPolicy {
-        if method.hasPrefix("vm.") || socketWorkerV2Methods.contains(method) {
+        if socketWorkerV2Methods.contains(method) {
             return .socketWorker
         }
         return .mainActor
@@ -1595,45 +1581,33 @@ class TerminalController {
             }
             semaphore.wait()
             return v2Ok(id: request.id, result: v2AuthStatusPayload(timedOut: false))
-        case "feedback.submit":
-            return v2Result(id: request.id, v2FeedbackSubmit(params: request.params))
-        case "feed.push":
-            return v2Result(id: request.id, v2FeedPush(params: request.params))
-        case "feed.permission.reply":
-            return v2Result(id: request.id, v2FeedPermissionReply(params: request.params))
-        case "feed.question.reply":
-            return v2Result(id: request.id, v2FeedQuestionReply(params: request.params))
-        case "feed.exit_plan.reply":
-            return v2Result(id: request.id, v2FeedExitPlanReply(params: request.params))
         case "browser.profiles.list":
-            return v2VmCall(id: request.id, timeoutSeconds: 30) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 30) {
                 try await BrowserProfileAutomation.list(params: request.params)
             }
         case "browser.profiles.create":
-            return v2VmCall(id: request.id, timeoutSeconds: 30) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 30) {
                 try await BrowserProfileAutomation.create(params: request.params)
             }
         case "browser.profiles.rename":
-            return v2VmCall(id: request.id, timeoutSeconds: 30) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 30) {
                 try await BrowserProfileAutomation.rename(params: request.params)
             }
         case "browser.profiles.clear":
-            return v2VmCall(id: request.id, timeoutSeconds: 120) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 120) {
                 try await BrowserProfileAutomation.clear(params: request.params)
             }
         case "browser.profiles.delete":
-            return v2VmCall(id: request.id, timeoutSeconds: 120) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 120) {
                 try await BrowserProfileAutomation.delete(params: request.params)
             }
         case "browser.import.cookies":
-            return v2VmCall(id: request.id, timeoutSeconds: 10 * 60) {
+            return v2AsyncSocketCall(id: request.id, timeoutSeconds: 10 * 60) {
                 let outcome = try await BrowserImportAutomation.importCookies(params: request.params)
                 return outcome.socketPayload
             }
         case "system.top":
             return v2Result(id: request.id, v2SystemTop(params: request.params))
-        case let method where method.hasPrefix("vm."):
-            return socketWorkerCloudVMResponse(method: method, id: request.id, params: request.params)
         default:
             return v2Error(id: request.id, code: "method_not_found", message: "Unknown method")
         }
@@ -1665,7 +1639,7 @@ class TerminalController {
             return
         }
 
-        sentryBreadcrumb(
+        diagnosticsBreadcrumb(
             "socket.listener.accept_source.started",
             category: "socket",
             data: socketListenerEventData(
@@ -1714,7 +1688,7 @@ class TerminalController {
 
             if let failure = Self.configureAcceptedClientSocket(clientSocket) {
                 if Self.shouldReportAcceptedClientConfigFailure(stage: failure.stage, errnoCode: failure.errnoCode) {
-                    sentryBreadcrumb(
+                    diagnosticsBreadcrumb(
                         "socket.listener.client_config.failed",
                         category: "socket",
                         data: socketListenerEventData(
@@ -1752,7 +1726,7 @@ class TerminalController {
             consecutiveFailures: consecutiveFailures
         )
 
-        sentryBreadcrumb(
+        diagnosticsBreadcrumb(
             "socket.listener.accept.failed",
             category: "socket",
             data: socketListenerEventData(
@@ -1847,7 +1821,7 @@ class TerminalController {
             return
         }
 
-        sentryBreadcrumb(
+        diagnosticsBreadcrumb(
             "socket.listener.accept.resume_scheduled",
             category: "socket",
             data: socketListenerEventData(
@@ -1897,7 +1871,7 @@ class TerminalController {
 
             let restartMode = self.accessMode
 
-            sentryBreadcrumb(
+            diagnosticsBreadcrumb(
                 "socket.listener.rearm.requested",
                 category: "socket",
                 data: self.socketListenerEventData(
@@ -2120,24 +2094,6 @@ class TerminalController {
 
         case "send_key_surface":
             return sendKeyToSurface(args)
-
-        case "notify":
-            return notifyCurrent(args)
-
-        case "notify_surface":
-            return notifySurface(args)
-
-        case "notify_target":
-            return notifyTarget(args)
-
-        case "notify_target_async":
-            return notifyTargetQueued(args)
-
-        case "list_notifications":
-            return listNotifications()
-
-        case "clear_notifications":
-            return clearNotifications(args)
 
         case "set_app_focus":
             return setAppFocusOverride(args)
@@ -2517,35 +2473,12 @@ class TerminalController {
             return v2Result(id: id, self.v2WorkspaceLast(params: params))
         case "workspace.equalize_splits":
             return v2Result(id: id, self.v2WorkspaceEqualizeSplits(params: params))
-        case "workspace.remote.configure":
-            return v2Result(id: id, self.v2WorkspaceRemoteConfigure(params: params))
-        case "workspace.remote.foreground_auth_ready":
-            return v2Result(id: id, self.v2WorkspaceRemoteForegroundAuthReady(params: params))
-        case "workspace.remote.reconnect":
-            return v2Result(id: id, self.v2WorkspaceRemoteReconnect(params: params))
-        case "workspace.remote.disconnect":
-            return v2Result(id: id, self.v2WorkspaceRemoteDisconnect(params: params))
-        case "workspace.remote.status":
-            return v2Result(id: id, self.v2WorkspaceRemoteStatus(params: params))
-        case "workspace.remote.terminal_session_end":
-            return v2Result(id: id, self.v2WorkspaceRemoteTerminalSessionEnd(params: params))
         case "session.restore_previous":
             return v2Result(id: id, self.v2SessionRestorePrevious())
 
         // Settings
         case "settings.open":
             return v2Result(id: id, self.v2SettingsOpen(params: params))
-
-        // Feedback
-        case "feedback.open":
-            return v2Result(id: id, self.v2FeedbackOpen(params: params))
-
-        // Feed (workstream)
-        case "feed.jump":
-            return v2Result(id: id, self.v2FeedJump(params: params))
-        case "feed.list":
-            return v2Result(id: id, self.v2FeedList(params: params))
-
 
         // Surfaces / input
         case "surface.list":
@@ -2590,8 +2523,6 @@ class TerminalController {
             return v2Result(id: id, self.v2SurfacePortsKick(params: params))
         case "surface.clear_history":
             return v2Result(id: id, self.v2SurfaceClearHistory(params: params))
-        case "surface.trigger_flash":
-            return v2Result(id: id, self.v2SurfaceTriggerFlash(params: params))
 
         // Panes
         case "pane.list":
@@ -2612,28 +2543,6 @@ class TerminalController {
             return v2Result(id: id, self.v2PaneJoin(params: params))
         case "pane.last":
             return v2Result(id: id, self.v2PaneLast(params: params))
-
-        // Notifications
-        case "notification.create":
-            return v2Result(id: id, self.v2NotificationCreate(params: params))
-        case "notification.create_for_caller":
-            return v2Result(id: id, self.v2NotificationCreateForCaller(params: params))
-        case "notification.create_for_surface":
-            return v2Result(id: id, self.v2NotificationCreateForSurface(params: params))
-        case "notification.create_for_target":
-            return v2Result(id: id, self.v2NotificationCreateForTarget(params: params))
-        case "notification.list":
-            return v2Ok(id: id, result: self.v2NotificationList())
-        case "notification.clear":
-            return v2Result(id: id, self.v2NotificationClear())
-        case "notification.dismiss":
-            return v2Result(id: id, self.v2NotificationDismiss(params: params))
-        case "notification.mark_read":
-            return v2Result(id: id, self.v2NotificationMarkRead(params: params))
-        case "notification.open":
-            return v2Result(id: id, self.v2NotificationOpen(params: params))
-        case "notification.jump_to_unread":
-            return v2Result(id: id, self.v2NotificationJumpToUnread())
 
         // App focus
         case "app.focus_override.set":
@@ -2881,8 +2790,6 @@ class TerminalController {
             return v2Result(id: id, self.v2DebugEmptyPanelCount())
         case "debug.empty_panel.reset":
             return v2Result(id: id, self.v2DebugResetEmptyPanelCount())
-        case "debug.notification.focus":
-            return v2Result(id: id, self.v2DebugFocusNotification(params: params))
         case "debug.flash.count":
             return v2Result(id: id, self.v2DebugFlashCount(params: params))
         case "debug.flash.reset":
@@ -2913,12 +2820,6 @@ class TerminalController {
             "auth.status",
             "auth.begin_sign_in",
             "auth.sign_out",
-            "vm.list",
-            "vm.create",
-            "vm.destroy",
-            "vm.exec",
-            "vm.attach_info",
-            "vm.ssh_info",
             "window.list",
             "window.current",
             "window.focus",
@@ -2938,22 +2839,8 @@ class TerminalController {
             "workspace.previous",
             "workspace.last",
             "workspace.equalize_splits",
-            "workspace.remote.configure",
-            "workspace.remote.foreground_auth_ready",
-            "workspace.remote.reconnect",
-            "workspace.remote.disconnect",
-            "workspace.remote.status",
-            "workspace.remote.terminal_session_end",
             "session.restore_previous",
             "settings.open",
-            "feedback.open",
-            "feedback.submit",
-            "feed.push",
-            "feed.permission.reply",
-            "feed.question.reply",
-            "feed.exit_plan.reply",
-            "feed.jump",
-            "feed.list",
             "surface.list",
             "surface.current",
             "surface.focus",
@@ -2976,7 +2863,6 @@ class TerminalController {
             "surface.ports_kick",
             "surface.read_text",
             "surface.clear_history",
-            "surface.trigger_flash",
             "pane.list",
             "pane.focus",
             "pane.surfaces",
@@ -2986,16 +2872,6 @@ class TerminalController {
             "pane.break",
             "pane.join",
             "pane.last",
-            "notification.create",
-            "notification.create_for_caller",
-            "notification.create_for_surface",
-            "notification.create_for_target",
-            "notification.list",
-            "notification.clear",
-            "notification.dismiss",
-            "notification.mark_read",
-            "notification.open",
-            "notification.jump_to_unread",
             "app.focus_override.set",
             "app.simulate_active",
             "file.open",
@@ -3113,7 +2989,6 @@ class TerminalController {
             "debug.bonsplit_underflow.reset",
             "debug.empty_panel.count",
             "debug.empty_panel.reset",
-            "debug.notification.focus",
             "debug.flash.count",
             "debug.flash.reset",
             "debug.panel_snapshot",
@@ -3928,9 +3803,9 @@ class TerminalController {
     }
 
     /// Bridge an async throws closure into a socket RPC response. Runs the work on a detached
-    /// Task (so VMClient's URLSession hops are free to use any actor) and blocks the socket
-    /// worker thread on a semaphore. Mirrors the auth.begin_sign_in pattern above.
-    nonisolated func v2VmCall(
+    /// Task so URLSession work can use any actor, then blocks the socket worker thread on a
+    /// semaphore. Mirrors the auth.begin_sign_in pattern above.
+    nonisolated func v2AsyncSocketCall(
         id: Any?,
         timeoutSeconds: TimeInterval = 17 * 60,
         _ work: @escaping () async throws -> [String: Any]
@@ -7911,376 +7786,6 @@ class TerminalController {
         return result
     }
 
-    // MARK: - V2 Notification Methods
-
-    private func v2NotificationCreate(params: [String: Any]) -> V2CallResult {
-        guard let tabManager = v2ResolveTabManager(params: params) else {
-            return .err(code: "unavailable", message: "TabManager not available", data: nil)
-        }
-
-        let explicitSurfaceId = v2UUID(params, "surface_id")
-        let title = (params["title"] as? String) ?? "Notification"
-        let subtitle = (params["subtitle"] as? String) ?? ""
-        let body = (params["body"] as? String) ?? ""
-
-        var result: V2CallResult = .err(code: "internal_error", message: "Failed to notify", data: nil)
-        v2MainSync {
-            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
-                result = .err(code: "not_found", message: "Workspace not found", data: nil)
-                return
-            }
-            if let explicitSurfaceId, ws.panels[explicitSurfaceId] == nil {
-                result = .err(
-                    code: "not_found",
-                    message: "Surface not found",
-                    data: ["surface_id": explicitSurfaceId.uuidString]
-                )
-                return
-            }
-            let surfaceId = explicitSurfaceId ?? ws.focusedPanelId
-            deliverNotificationSynchronously(
-                tabId: ws.id,
-                surfaceId: surfaceId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-            result = .ok(["workspace_id": ws.id.uuidString, "surface_id": v2OrNull(surfaceId?.uuidString)])
-        }
-        return result
-    }
-
-    private func v2NotificationCreateForSurface(params: [String: Any]) -> V2CallResult {
-        guard let tabManager = v2ResolveTabManager(params: params) else {
-            return .err(code: "unavailable", message: "TabManager not available", data: nil)
-        }
-        guard let surfaceId = v2UUID(params, "surface_id") else {
-            return .err(code: "invalid_params", message: "Missing or invalid surface_id", data: nil)
-        }
-
-        let title = (params["title"] as? String) ?? "Notification"
-        let subtitle = (params["subtitle"] as? String) ?? ""
-        let body = (params["body"] as? String) ?? ""
-
-        var result: V2CallResult = .err(code: "internal_error", message: "Failed to notify", data: nil)
-        v2MainSync {
-            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
-                result = .err(code: "not_found", message: "Workspace not found", data: nil)
-                return
-            }
-            guard ws.panels[surfaceId] != nil else {
-                result = .err(code: "not_found", message: "Surface not found", data: ["surface_id": surfaceId.uuidString])
-                return
-            }
-            deliverNotificationSynchronously(
-                tabId: ws.id,
-                surfaceId: surfaceId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-            result = .ok(["workspace_id": ws.id.uuidString, "workspace_ref": v2Ref(kind: .workspace, uuid: ws.id), "surface_id": surfaceId.uuidString, "surface_ref": v2Ref(kind: .surface, uuid: surfaceId), "window_id": v2OrNull(v2ResolveWindowId(tabManager: tabManager)?.uuidString), "window_ref": v2Ref(kind: .window, uuid: v2ResolveWindowId(tabManager: tabManager))])
-        }
-        return result
-    }
-
-    private func v2NotificationCreateForTarget(params: [String: Any]) -> V2CallResult {
-        guard let tabManager = v2ResolveTabManager(params: params) else {
-            return .err(code: "unavailable", message: "TabManager not available", data: nil)
-        }
-        guard let wsId = v2UUID(params, "workspace_id") else {
-            return .err(code: "invalid_params", message: "Missing or invalid workspace_id", data: nil)
-        }
-        guard let surfaceId = v2UUID(params, "surface_id") else {
-            return .err(code: "invalid_params", message: "Missing or invalid surface_id", data: nil)
-        }
-
-        let title = (params["title"] as? String) ?? "Notification"
-        let subtitle = (params["subtitle"] as? String) ?? ""
-        let body = (params["body"] as? String) ?? ""
-
-        var result: V2CallResult = .err(code: "internal_error", message: "Failed to notify", data: nil)
-        v2MainSync {
-            guard let ws = tabManager.tabs.first(where: { $0.id == wsId }) else {
-                result = .err(code: "not_found", message: "Workspace not found", data: ["workspace_id": wsId.uuidString])
-                return
-            }
-            guard ws.panels[surfaceId] != nil else {
-                result = .err(code: "not_found", message: "Surface not found", data: ["surface_id": surfaceId.uuidString])
-                return
-            }
-            deliverNotificationSynchronously(
-                tabId: ws.id,
-                surfaceId: surfaceId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-            result = .ok(["workspace_id": ws.id.uuidString, "workspace_ref": v2Ref(kind: .workspace, uuid: ws.id), "surface_id": surfaceId.uuidString, "surface_ref": v2Ref(kind: .surface, uuid: surfaceId), "window_id": v2OrNull(v2ResolveWindowId(tabManager: tabManager)?.uuidString), "window_ref": v2Ref(kind: .window, uuid: v2ResolveWindowId(tabManager: tabManager))])
-        }
-        return result
-    }
-
-    private func v2NotificationList() -> [String: Any] {
-        var items: [[String: Any]] = []
-        v2MainSync {
-            items = TerminalNotificationStore.shared.notifications.map { n in
-                return notificationPayload(n, opened: nil, includeReadState: true)
-            }
-        }
-        return ["notifications": items]
-    }
-
-    private func v2NotificationDismiss(params: [String: Any]) -> V2CallResult {
-        let id = v2UUID(params, "id")
-        let allRead = v2Bool(params, "all_read") ?? false
-        let selectorCount = (id == nil ? 0 : 1) + (allRead ? 1 : 0)
-
-        guard selectorCount == 1 else {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.dismissSelectorRequired", defaultValue: "Select exactly one of id or all_read"),
-                data: nil
-            )
-        }
-
-        if allRead {
-            var dismissedCount = 0
-            v2MainSync {
-                let readIds = TerminalNotificationStore.shared.notifications
-                    .filter(\.isRead)
-                    .map(\.id)
-                for id in readIds {
-                    TerminalNotificationStore.shared.remove(id: id)
-                }
-                dismissedCount = readIds.count
-            }
-            return .ok(["dismissed": dismissedCount, "all_read": true])
-        }
-
-        guard let id else {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.idRequired", defaultValue: "Missing or invalid notification id"),
-                data: nil
-            )
-        }
-
-        var dismissed = false
-        var payload: [String: Any] = [:]
-        v2MainSync {
-            let notification = TerminalNotificationStore.shared.notifications.first(where: { $0.id == id })
-            if let notification {
-                payload = notificationPayload(notification, opened: nil, includeReadState: true)
-                TerminalNotificationStore.shared.remove(id: id)
-                dismissed = true
-            }
-        }
-        guard dismissed else {
-            return .err(
-                code: "not_found",
-                message: String(localized: "socket.notification.notFound", defaultValue: "Notification not found"),
-                data: ["id": id.uuidString]
-            )
-        }
-        payload["dismissed"] = 1
-        return .ok(payload)
-    }
-
-    private func v2NotificationMarkRead(params: [String: Any]) -> V2CallResult {
-        let id = v2UUID(params, "id")
-        let tabId = v2UUID(params, "tab_id") ?? v2UUID(params, "workspace_id")
-        let hasSurfaceSelector = v2HasNonNullParam(params, "surface_id")
-        let surfaceId = v2UUID(params, "surface_id")
-        let all = v2Bool(params, "all") ?? false
-        let selectorCount = (id == nil ? 0 : 1) + (tabId == nil ? 0 : 1) + (all ? 1 : 0)
-
-        guard selectorCount == 1 else {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.markReadSelectorRequired", defaultValue: "Select exactly one of id, tab_id, or all"),
-                data: nil
-            )
-        }
-        if hasSurfaceSelector, surfaceId == nil {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.surfaceIdInvalid", defaultValue: "Missing or invalid surface_id"),
-                data: nil
-            )
-        }
-        if hasSurfaceSelector, tabId == nil {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.surfaceIdRequiresWorkspace", defaultValue: "surface_id requires tab_id or workspace_id"),
-                data: nil
-            )
-        }
-
-        var markedCount = 0
-        var selectedNotificationExists = true
-        v2MainSync {
-            let store = TerminalNotificationStore.shared
-            let before = store.notifications
-            if let id {
-                guard before.contains(where: { $0.id == id }) else {
-                    selectedNotificationExists = false
-                    return
-                }
-                store.markRead(id: id)
-            } else if let tabId {
-                if hasSurfaceSelector {
-                    store.markRead(forTabId: tabId, surfaceId: surfaceId)
-                } else {
-                    store.markRead(forTabId: tabId)
-                }
-            } else if all {
-                store.markAllRead()
-            }
-            let afterById = Dictionary(uniqueKeysWithValues: store.notifications.map { ($0.id, $0.isRead) })
-            markedCount = before.filter { !$0.isRead && afterById[$0.id] == true }.count
-        }
-
-        if !selectedNotificationExists, let id {
-            return .err(
-                code: "not_found",
-                message: String(localized: "socket.notification.notFound", defaultValue: "Notification not found"),
-                data: ["id": id.uuidString]
-            )
-        }
-
-        var result: [String: Any] = ["marked_read": markedCount]
-        if let id { result["id"] = id.uuidString }
-        if let tabId {
-            result["workspace_id"] = tabId.uuidString
-            result["workspace_ref"] = v2Ref(kind: .workspace, uuid: tabId)
-        }
-        if hasSurfaceSelector {
-            result["surface_id"] = v2OrNull(surfaceId?.uuidString)
-            result["surface_ref"] = v2Ref(kind: .surface, uuid: surfaceId)
-        }
-        if all { result["all"] = true }
-        return .ok(result)
-    }
-
-    private func v2NotificationOpen(params: [String: Any]) -> V2CallResult {
-        guard let id = v2UUID(params, "id") else {
-            return .err(
-                code: "invalid_params",
-                message: String(localized: "socket.notification.idRequired", defaultValue: "Missing or invalid notification id"),
-                data: nil
-            )
-        }
-
-        var notification: TerminalNotification?
-        var opened = false
-        var payload: [String: Any] = [:]
-        v2MainSync {
-            let store = TerminalNotificationStore.shared
-            notification = store.notifications.first(where: { $0.id == id })
-            if let notification {
-                opened = AppDelegate.shared?.openNotification(
-                    tabId: notification.tabId,
-                    surfaceId: notification.surfaceId,
-                    notificationId: notification.id
-                ) ?? false
-                let current = store.notifications.first(where: { $0.id == notification.id }) ?? notification
-                payload = notificationPayload(current, opened: opened, includeReadState: true)
-            }
-        }
-
-        guard notification != nil else {
-            return .err(
-                code: "not_found",
-                message: String(localized: "socket.notification.notFound", defaultValue: "Notification not found"),
-                data: ["id": id.uuidString]
-            )
-        }
-        guard opened else {
-            return .err(
-                code: "not_found",
-                message: String(localized: "socket.notification.targetNotFound", defaultValue: "Notification target not found"),
-                data: payload
-            )
-        }
-        return .ok(payload)
-    }
-
-    private func v2NotificationJumpToUnread() -> V2CallResult {
-        var openedNotification: TerminalNotification?
-        var payload: [String: Any] = [:]
-        v2MainSync {
-            openedNotification = AppDelegate.shared?.jumpToLatestUnread()
-            if let openedNotification {
-                let store = TerminalNotificationStore.shared
-                let current = store.notifications.first(where: { $0.id == openedNotification.id }) ?? openedNotification
-                payload = notificationPayload(current, opened: true, includeReadState: true)
-            }
-        }
-        guard openedNotification != nil else {
-            return .ok(["opened": false])
-        }
-        return .ok(payload)
-    }
-
-    private func notificationPayload(
-        _ notification: TerminalNotification,
-        opened: Bool?,
-        includeReadState: Bool
-    ) -> [String: Any] {
-        var payload: [String: Any] = [
-            "id": notification.id.uuidString,
-            "workspace_id": notification.tabId.uuidString,
-            "workspace_ref": v2Ref(kind: .workspace, uuid: notification.tabId),
-            "surface_id": v2OrNull(notification.surfaceId?.uuidString),
-            "surface_ref": v2Ref(kind: .surface, uuid: notification.surfaceId),
-            "title": notification.title,
-            "subtitle": notification.subtitle,
-            "body": notification.body,
-            "created_at": Self.notificationCreatedAtString(notification.createdAt),
-            "tab_title": v2OrNull(AppDelegate.shared?.tabTitle(for: notification.tabId)),
-        ]
-        if includeReadState {
-            payload["is_read"] = notification.isRead
-        }
-        if let opened {
-            payload["opened"] = opened
-        }
-        return payload
-    }
-
-    private func v2NotificationClear() -> V2CallResult {
-        TerminalMutationBus.shared.enqueueClearAllNotifications()
-        return .ok([:])
-    }
-
-    private func v2FeedbackOpen(params: [String: Any]) -> V2CallResult {
-        let workspaceId = v2UUID(params, "workspace_id")
-        let windowId = v2UUID(params, "window_id")
-        let shouldActivate = v2FocusAllowed(requested: v2Bool(params, "activate") ?? false)
-        DispatchQueue.main.async {
-            let targetWindow: NSWindow?
-            if let windowId, let app = AppDelegate.shared {
-                targetWindow = app.mainWindow(for: windowId)
-            } else if let workspaceId, let app = AppDelegate.shared {
-                targetWindow = app.mainWindowContainingWorkspace(workspaceId)
-            } else {
-                targetWindow = nil
-            }
-
-            if shouldActivate {
-                if let targetWindow {
-                    _ = AppDelegate.shared?.focusWindowForAppActivation(targetWindow, reason: .feedback)
-                } else {
-                    NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-                }
-            }
-
-            FeedbackComposerBridge.openComposer(in: targetWindow)
-        }
-        return .ok(["opened": true])
-    }
-
     private func v2SessionRestorePrevious() -> V2CallResult {
         var restored = false
         v2MainSync {
@@ -8323,261 +7828,6 @@ class TerminalController {
         return .ok([
             "opened": true,
             "target": navigationTarget?.rawValue ?? "general",
-        ])
-    }
-
-    private nonisolated func v2FeedbackSubmit(params: [String: Any]) -> V2CallResult {
-        guard let email = params["email"] as? String else {
-            return .err(code: "invalid_params", message: "Missing email", data: ["field": "email"])
-        }
-        guard let body = params["body"] as? String else {
-            return .err(code: "invalid_params", message: "Missing body", data: ["field": "body"])
-        }
-        let imagePaths = params["image_paths"] as? [String] ?? []
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: V2CallResult = .err(code: "internal_error", message: "Feedback submission failed", data: nil)
-
-        Task {
-            let resolved: V2CallResult
-            do {
-                let attachmentCount = try await FeedbackComposerBridge.submit(
-                    email: email,
-                    message: body,
-                    imagePaths: imagePaths
-                )
-                resolved = .ok([
-                    "submitted": true,
-                    "attachment_count": attachmentCount,
-                ])
-            } catch let error as FeedbackComposerBridgeError {
-                let code: String
-                switch error {
-                case .invalidEmail, .emptyMessage, .messageTooLong, .tooManyImages, .invalidImagePath:
-                    code = "invalid_params"
-                case .submissionFailed:
-                    code = "request_failed"
-                }
-                resolved = .err(code: code, message: error.localizedDescription, data: nil)
-            } catch {
-                resolved = .err(code: "internal_error", message: error.localizedDescription, data: nil)
-            }
-
-            result = resolved
-            semaphore.signal()
-        }
-
-        if semaphore.wait(timeout: .now() + 35) == .timedOut {
-            return .err(code: "timeout", message: "Feedback submission timed out", data: nil)
-        }
-
-        return result
-    }
-
-    // MARK: - V2 Feed (workstream) handlers
-
-    private nonisolated func v2FeedPush(params: [String: Any]) -> V2CallResult {
-        let waitTimeout: TimeInterval
-        if let rawTimeout = params["wait_timeout_seconds"] {
-            let seconds: Double?
-            if let number = rawTimeout as? NSNumber {
-                seconds = number.doubleValue
-            } else if let value = rawTimeout as? Double {
-                seconds = value
-            } else if let value = rawTimeout as? Int {
-                seconds = Double(value)
-            } else {
-                seconds = nil
-            }
-            guard let seconds else {
-                return .err(
-                    code: "invalid_params",
-                    message: "feed.push wait_timeout_seconds must be numeric",
-                    data: nil
-                )
-            }
-            guard seconds.isFinite, seconds >= 0, seconds <= 120 else {
-                return .err(
-                    code: "invalid_params",
-                    message: "feed.push wait_timeout_seconds must be between 0 and 120",
-                    data: nil
-                )
-            }
-            waitTimeout = seconds
-        } else {
-            waitTimeout = 0
-        }
-        let eventDict: [String: Any]
-        if let nested = params["event"] as? [String: Any] {
-            eventDict = nested
-        } else if params["session_id"] != nil,
-                  params["hook_event_name"] != nil,
-                  params["_source"] != nil {
-            eventDict = params
-        } else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.push requires an `event` object",
-                data: nil
-            )
-        }
-
-        let event: WorkstreamEvent
-        do {
-            let data = try JSONSerialization.data(withJSONObject: eventDict)
-            event = try JSONDecoder().decode(WorkstreamEvent.self, from: data)
-        } catch {
-            return .err(
-                code: "invalid_params",
-                message: "feed.push event failed to decode: \(error)",
-                data: nil
-            )
-        }
-
-        CmuxEventBus.shared.publishWorkstreamEvent(event, phase: "received")
-        v2ApplyIMessageModeSideEffects(for: event)
-
-        let result = FeedCoordinator.shared.ingestBlocking(
-            event: event,
-            waitTimeout: waitTimeout
-        )
-        CmuxEventBus.shared.publishWorkstreamEvent(
-            event,
-            phase: "completed",
-            result: FeedSocketEncoding.payload(for: result)
-        )
-        return .ok(FeedSocketEncoding.payload(for: result))
-    }
-
-    private nonisolated func v2ApplyIMessageModeSideEffects(for event: WorkstreamEvent) {
-        guard event.hookEventName == .userPromptSubmit || event.hookEventName == .stop || event.hookEventName == .subagentStop,
-              let rawWorkspaceId = event.workspaceId?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawWorkspaceId.isEmpty
-        else { return }
-
-        let iMessageModeEnabled = IMessageModeSettings.isEnabled()
-        switch event.hookEventName {
-        case .userPromptSubmit:
-            v2MainSync {
-                guard let workspaceId = v2UUIDAny(rawWorkspaceId) else { return }
-                guard let tabManager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId) else { return }
-                _ = tabManager.handlePromptSubmit(
-                    workspaceId: workspaceId,
-                    message: event.submittedPromptMessage,
-                    iMessageModeEnabled: iMessageModeEnabled
-                )
-            }
-        case .stop, .subagentStop:
-            let assistantFinalMessage = event.assistantFinalMessage
-            Task { @MainActor [weak self, rawWorkspaceId, assistantFinalMessage, iMessageModeEnabled] in
-                guard let self,
-                      let workspaceId = self.v2UUIDAny(rawWorkspaceId) else { return }
-                guard let tabManager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId) else { return }
-                _ = tabManager.handleAssistantFinalMessage(
-                    workspaceId: workspaceId,
-                    message: assistantFinalMessage,
-                    iMessageModeEnabled: iMessageModeEnabled
-                )
-            }
-        default:
-            break
-        }
-    }
-
-    private nonisolated func v2FeedPermissionReply(params: [String: Any]) -> V2CallResult {
-        guard let requestId = params["request_id"] as? String else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.permission.reply requires request_id",
-                data: nil
-            )
-        }
-        guard let modeRaw = params["mode"] as? String,
-              let mode = WorkstreamPermissionMode(rawValue: modeRaw)
-        else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.permission.reply requires mode ∈ once|always|all|bypass|deny",
-                data: nil
-            )
-        }
-        FeedCoordinator.shared.deliverReply(
-            requestId: requestId,
-            decision: .permission(mode)
-        )
-        return .ok(["delivered": true])
-    }
-
-    private nonisolated func v2FeedQuestionReply(params: [String: Any]) -> V2CallResult {
-        guard let requestId = params["request_id"] as? String else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.question.reply requires request_id",
-                data: nil
-            )
-        }
-        guard let selections = params["selections"] as? [String] else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.question.reply requires selections: [string]",
-                data: nil
-            )
-        }
-        FeedCoordinator.shared.deliverReply(
-            requestId: requestId,
-            decision: .question(selections: selections)
-        )
-        return .ok(["delivered": true])
-    }
-
-    private nonisolated func v2FeedExitPlanReply(params: [String: Any]) -> V2CallResult {
-        guard let requestId = params["request_id"] as? String else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.exit_plan.reply requires request_id",
-                data: nil
-            )
-        }
-        guard let modeRaw = params["mode"] as? String,
-              let mode = WorkstreamExitPlanMode(rawValue: modeRaw)
-        else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.exit_plan.reply requires mode ∈ ultraplan|bypassPermissions|autoAccept|manual|deny",
-                data: nil
-            )
-        }
-        let feedback = params["feedback"] as? String
-        FeedCoordinator.shared.deliverReply(
-            requestId: requestId,
-            decision: .exitPlan(mode, feedback: feedback)
-        )
-        return .ok(["delivered": true])
-    }
-
-    private func v2FeedJump(params: [String: Any]) -> V2CallResult {
-        guard let workstreamId = params["workstream_id"] as? String else {
-            return .err(
-                code: "invalid_params",
-                message: "feed.jump requires workstream_id",
-                data: nil
-            )
-        }
-        // MVP: resolve to a cmux surface via `SessionIndexStore` lands in
-        // the UI PR; for now we return whether the id is known so callers
-        // can show a toast.
-        let matched = FeedCoordinator.shared.resolvePossibleSurface(for: workstreamId)
-        return .ok([
-            "workstream_id": workstreamId,
-            "matched": matched
-        ])
-    }
-
-    private func v2FeedList(params: [String: Any]) -> V2CallResult {
-        let pendingOnly = (params["pending_only"] as? Bool) ?? false
-        let items = FeedCoordinator.shared.snapshot(pendingOnly: pendingOnly)
-        return .ok([
-            "items": items.map { FeedSocketEncoding.itemDict($0) }
         ])
     }
 
@@ -13226,13 +12476,6 @@ class TerminalController {
           send_key_surface <id|idx> <key> - Send special key to a specific terminal
           read_screen [id|idx] [--scrollback] [--lines N] - Read terminal text (plain text)
 
-        Notification commands:
-          notify <title>|<subtitle>|<body>   - Notify focused panel
-          notify_surface <id|idx> <payload>  - Notify a specific surface
-          notify_target <workspace_id> <surface_id> <payload> - Notify by workspace+surface
-          notify_target_async <workspace_uuid> <surface_uuid> <payload> - Queue notification by workspace+surface
-          list_notifications              - List all notifications
-          clear_notifications [--tab=X]    - Clear notifications (all or per-tab)
           set_app_focus <active|inactive|clear> - Override app focus state
           simulate_app_active             - Trigger app active handler
           set_status <key> <value> [--icon=X] [--color=#hex] [--url=X] [--priority=N] [--format=plain|markdown] [--tab=X] - Set a status entry
@@ -14422,205 +13665,6 @@ class TerminalController {
         return success ? "OK" : "ERROR: Panel not found"
     }
 
-    private func notifyCurrent(_ args: String) -> String {
-        guard let tabManager = tabManager else { return "ERROR: TabManager not available" }
-
-        var result = "OK"
-        v2MainSync {
-            guard let tabId = tabManager.selectedTabId else {
-                result = "ERROR: No tab selected"
-                return
-            }
-            let surfaceId = tabManager.focusedSurfaceId(for: tabId)
-            let (title, subtitle, body) = parseNotificationPayload(args)
-            deliverNotificationSynchronously(
-                tabId: tabId,
-                surfaceId: surfaceId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-        }
-        return result
-    }
-
-    private func notifySurface(_ args: String) -> String {
-        guard let tabManager = tabManager else { return "ERROR: TabManager not available" }
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "ERROR: Missing surface id or index" }
-
-        let parts = trimmed.split(separator: " ", maxSplits: 1).map(String.init)
-        let surfaceArg = parts[0]
-        let payload = parts.count > 1 ? parts[1] : ""
-
-        var result = "OK"
-        v2MainSync {
-            guard let tabId = tabManager.selectedTabId,
-                  let tab = tabManager.tabs.first(where: { $0.id == tabId }) else {
-                result = "ERROR: No tab selected"
-                return
-            }
-            guard let surfaceId = resolveSurfaceId(from: surfaceArg, tab: tab) else {
-                result = "ERROR: Surface not found"
-                return
-            }
-            let (title, subtitle, body) = parseNotificationPayload(payload)
-            deliverNotificationSynchronously(
-                tabId: tabId,
-                surfaceId: surfaceId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-        }
-        return result
-    }
-
-    private func notifyTarget(_ args: String) -> String {
-        guard let tabManager = tabManager else { return "ERROR: TabManager not available" }
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "ERROR: Usage: notify_target <workspace_id> <surface_id> <title>|<subtitle>|<body>" }
-
-        let parts = trimmed.split(separator: " ", maxSplits: 2).map(String.init)
-        guard parts.count >= 2 else { return "ERROR: Usage: notify_target <workspace_id> <surface_id> <title>|<subtitle>|<body>" }
-
-        let tabArg = parts[0]
-        let panelArg = parts[1]
-        let payload = parts.count > 2 ? parts[2] : ""
-        let (title, subtitle, body) = parseNotificationPayload(payload)
-
-        if let workspaceId = UUID(uuidString: tabArg),
-           let panelId = UUID(uuidString: panelArg) {
-            var result = "OK"
-            v2MainSync {
-                guard let tab = self.tabForSidebarMutation(id: workspaceId) else {
-                    result = "ERROR: Tab not found"
-                    return
-                }
-                guard tab.panels[panelId] != nil else {
-                    result = "ERROR: Panel not found"
-                    return
-                }
-                deliverNotificationSynchronously(
-                    tabId: workspaceId,
-                    surfaceId: panelId,
-                    title: title,
-                    subtitle: subtitle,
-                    body: body
-                )
-            }
-            return result
-        }
-
-        var result = "OK"
-        v2MainSync {
-            let tab: Tab?
-            if let tabId = UUID(uuidString: tabArg) {
-                tab = tabForSidebarMutation(id: tabId)
-            } else {
-                tab = resolveTab(from: tabArg, tabManager: tabManager)
-            }
-            guard let tab else {
-                result = "ERROR: Tab not found"
-                return
-            }
-            guard let panelId = UUID(uuidString: panelArg),
-                  tab.panels[panelId] != nil else {
-                result = "ERROR: Panel not found"
-                return
-            }
-            deliverNotificationSynchronously(
-                tabId: tab.id,
-                surfaceId: panelId,
-                title: title,
-                subtitle: subtitle,
-                body: body
-            )
-        }
-        return result
-    }
-
-    private func notifyTargetQueued(_ args: String) -> String {
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "ERROR: Usage: notify_target_async <workspace_uuid> <surface_uuid> <title>|<subtitle>|<body>"
-        }
-
-        let parts = trimmed.split(separator: " ", maxSplits: 2).map(String.init)
-        guard parts.count == 3 else {
-            return "ERROR: Usage: notify_target_async <workspace_uuid> <surface_uuid> <title>|<subtitle>|<body>"
-        }
-        guard let tabId = UUID(uuidString: parts[0]) else {
-            return "ERROR: notify_target_async requires workspace_uuid to be a UUID"
-        }
-        guard let surfaceId = UUID(uuidString: parts[1]) else {
-            return "ERROR: notify_target_async requires surface_uuid to be a UUID"
-        }
-
-        let payload = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !payload.isEmpty else {
-            return "ERROR: Usage: notify_target_async <workspace_uuid> <surface_uuid> <title>|<subtitle>|<body>"
-        }
-        let (title, subtitle, body) = parseNotificationPayload(payload)
-        TerminalMutationBus.shared.enqueueNotification(
-            tabId: tabId,
-            surfaceId: surfaceId,
-            title: title,
-            subtitle: subtitle,
-            body: body
-        )
-        return "OK"
-    }
-
-    private func listNotifications() -> String {
-        var result = ""
-        v2MainSync {
-            let lines = TerminalNotificationStore.shared.notifications.enumerated().map { index, notification in
-                let surfaceText = notification.surfaceId?.uuidString ?? "none"
-                let readText = notification.isRead ? "read" : "unread"
-                let createdAt = Self.notificationCreatedAtString(notification.createdAt)
-                let tabTitle = Self.notificationListTrailingField(AppDelegate.shared?.tabTitle(for: notification.tabId) ?? "")
-                return "\(index):\(notification.id.uuidString)|\(notification.tabId.uuidString)|\(surfaceText)|\(readText)|\(notification.title)|\(notification.subtitle)|\(notification.body)|\(createdAt)|\(tabTitle)"
-            }
-            result = lines.joined(separator: "\n")
-        }
-        return result.isEmpty ? "No notifications" : result
-    }
-
-    private func clearNotifications(_ args: String) -> String {
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            TerminalMutationBus.shared.enqueueClearAllNotifications()
-            return "OK"
-        }
-        let parsed = parseOptions(trimmed)
-        guard let tabOption = parsed.options["tab"],
-              !tabOption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "ERROR: Usage: clear_notifications [--tab=X]"
-        }
-        let targetResolution = parseSidebarMutationTabTarget(options: parsed.options)
-        guard let target = targetResolution.target else {
-            return targetResolution.error ?? "ERROR: Tab not found"
-        }
-        if case .workspace(let tabId) = target {
-            TerminalMutationBus.shared.enqueueClearNotifications(forTabId: tabId)
-        } else {
-            let clearBoundary = TerminalMutationBus.shared.markNotificationClearBoundary()
-            TerminalMutationBus.shared.enqueueMainActorMutation { [weak self] in
-                guard let self, let tab = self.resolveSidebarMutationTab(target) else { return }
-                TerminalMutationBus.shared.discardPendingNotifications(
-                    forTabId: tab.id,
-                    through: clearBoundary
-                )
-                TerminalNotificationStore.shared.clearNotifications(
-                    forTabId: tab.id,
-                    discardQueuedNotifications: false
-                )
-            }
-        }
-        return "OK"
-    }
-
     private func setAppFocusOverride(_ arg: String) -> String {
         let trimmed = arg.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch trimmed {
@@ -15336,18 +14380,6 @@ class TerminalController {
         }
 
         return nil
-    }
-
-    private func parseNotificationPayload(_ args: String) -> (String, String, String) {
-        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return ("Notification", "", "") }
-        let parts = trimmed.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-        let title = parts.count > 0 ? parts[0].trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        let subtitle = parts.count > 2 ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        let body = parts.count > 2
-            ? parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
-            : (parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines) : "")
-        return (title.isEmpty ? "Notification" : title, subtitle, body)
     }
 
     private func closeWorkspace(_ tabId: String) -> String {

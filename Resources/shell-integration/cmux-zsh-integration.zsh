@@ -46,24 +46,8 @@ _cmux_socket_is_unix() {
     [[ -n "$CMUX_SOCKET_PATH" && -S "$CMUX_SOCKET_PATH" ]]
 }
 
-_cmux_relay_cli_path() {
-    if [[ -n "${CMUX_BUNDLED_CLI_PATH:-}" && -x "${CMUX_BUNDLED_CLI_PATH}" ]]; then
-        print -r -- "${CMUX_BUNDLED_CLI_PATH}"
-        return 0
-    fi
-    command -v cmux 2>/dev/null
-}
-
-_cmux_socket_uses_remote_relay() {
-    [[ -n "$CMUX_SOCKET_PATH" ]] || return 1
-    [[ "$CMUX_SOCKET_PATH" == /* ]] && return 1
-    [[ "$CMUX_SOCKET_PATH" == *:* ]] || return 1
-    [[ -n "$(_cmux_relay_cli_path)" ]]
-}
-
 _cmux_has_port_scan_transport() {
-    _cmux_socket_is_unix && return 0
-    _cmux_socket_uses_remote_relay
+    _cmux_socket_is_unix
 }
 
 _cmux_json_escape() {
@@ -76,68 +60,12 @@ _cmux_json_escape() {
     print -r -- "$value"
 }
 
-_cmux_relay_rpc_bg() {
-    local method="$1"
-    local params="$2"
-    local relay_cli=""
-    _cmux_socket_uses_remote_relay || return 1
-    relay_cli="$(_cmux_relay_cli_path)" || return 1
-    { "$relay_cli" rpc "$method" "$params" >/dev/null 2>&1 || true } >/dev/null 2>&1 &!
-}
-
-_cmux_relay_rpc() {
-    local method="$1"
-    local params="$2"
-    local relay_cli=""
-    local response=""
-    _cmux_socket_uses_remote_relay || return 1
-    # Relay `cmux rpc` exits nonzero on server error. The real remote CLI prints
-    # only the JSON result payload on success, while some test stubs return the
-    # full `{"ok":...}` envelope. Retry only on explicit `ok:false`.
-    relay_cli="$(_cmux_relay_cli_path)" || return 1
-    response="$("$relay_cli" rpc "$method" "$params" 2>/dev/null)" || return 1
-    response="${response//$'\n'/}"
-    response="${response//$'\r'/}"
-    [[ "$response" == *'"ok":false'* || "$response" == *'"ok": false'* ]] && return 1
-    return 0
-}
-
-_cmux_relay_workspace_id() {
-    if [[ -n "$CMUX_WORKSPACE_ID" ]]; then
-        print -r -- "$CMUX_WORKSPACE_ID"
-        return 0
-    fi
-    [[ -n "$CMUX_TAB_ID" ]] || return 1
-    print -r -- "$CMUX_TAB_ID"
-}
-
 _cmux_report_tty_via_relay() {
-    _cmux_socket_uses_remote_relay || return 1
-    local workspace_id=""
-    workspace_id="$(_cmux_relay_workspace_id)" || return 1
-    [[ -n "$_CMUX_TTY_NAME" ]] || return 1
-
-    local tty_name_json params
-    tty_name_json="$(_cmux_json_escape "$_CMUX_TTY_NAME")"
-    params="{\"workspace_id\":\"$workspace_id\",\"tty_name\":\"$tty_name_json\""
-    if [[ -n "$CMUX_PANEL_ID" ]]; then
-        params+=",\"surface_id\":\"$CMUX_PANEL_ID\""
-    fi
-    params+="}"
-    _cmux_relay_rpc "surface.report_tty" "$params"
+    return 1
 }
 
 _cmux_ports_kick_via_relay() {
-    local reason="${1:-command}"
-    _cmux_socket_uses_remote_relay || return 1
-    local workspace_id=""
-    workspace_id="$(_cmux_relay_workspace_id)" || return 1
-    local params="{\"workspace_id\":\"$workspace_id\",\"reason\":\"$reason\""
-    if [[ -n "$CMUX_PANEL_ID" ]]; then
-        params+=",\"surface_id\":\"$CMUX_PANEL_ID\""
-    fi
-    params+="}"
-    _cmux_relay_rpc_bg "surface.ports_kick" "$params"
+    return 1
 }
 
 _cmux_restore_scrollback_once() {
@@ -156,49 +84,6 @@ _cmux_now() {
     print -r -- "${EPOCHSECONDS:-$SECONDS}"
 }
 
-typeset -g _CMUX_CLAUDE_WRAPPER=""
-_cmux_install_claude_wrapper() {
-    local integration_dir="${CMUX_SHELL_INTEGRATION_DIR:-}"
-    [[ -n "$integration_dir" ]] || return 0
-
-    integration_dir="${integration_dir%/}"
-    local bundle_dir="${integration_dir%/shell-integration}"
-    local wrapper_path="$bundle_dir/bin/claude"
-    [[ -x "$wrapper_path" ]] || return 0
-
-    # Keep the bundled claude wrapper ahead of later PATH mutations. Install it
-    # via eval so an existing `alias claude=...` cannot break parsing.
-    _CMUX_CLAUDE_WRAPPER="$wrapper_path"
-    builtin unalias claude >/dev/null 2>&1 || true
-    eval 'claude() { "$_CMUX_CLAUDE_WRAPPER" "$@"; }'
-}
-_cmux_install_claude_wrapper
-
-_cmux_normalize_claude_config_dir() {
-    [[ -n "${CLAUDE_CONFIG_DIR:-}" && -n "${HOME:-}" ]] || return 0
-
-    local value="$CLAUDE_CONFIG_DIR"
-    if [[ "$value" == "~/"* ]]; then
-        value="$HOME/${value#~/}"
-    fi
-
-    local legacy_root="$HOME/.subrouter/codex/claude"
-    local account_root="$HOME/.codex-accounts/claude"
-    local suffix candidate
-
-    if [[ "$value" == "$legacy_root" ]]; then
-        candidate="$account_root"
-    elif [[ "$value" == "$legacy_root/"* ]]; then
-        suffix="${value#$legacy_root/}"
-        candidate="$account_root/$suffix"
-    else
-        return 0
-    fi
-
-    [[ -d "$candidate" ]] || return 0
-    export CLAUDE_CONFIG_DIR="$candidate"
-}
-_cmux_normalize_claude_config_dir
 
 # Throttle heavy work to avoid prompt latency.
 typeset -g _CMUX_PWD_LAST_PWD=""
@@ -233,7 +118,6 @@ typeset -g _CMUX_TMUX_PUSH_SIGNATURE=""
 typeset -g _CMUX_TMUX_PULL_SIGNATURE=""
 typeset -g _CMUX_DELAY_TERM_RESTORE_UNTIL_FIRST_PROMPT=${_CMUX_DELAY_TERM_RESTORE_UNTIL_FIRST_PROMPT:-0}
 typeset -ga _CMUX_TMUX_SYNC_KEYS=(
-    CMUX_BUNDLED_CLI_PATH
     CMUX_BUNDLE_ID
     CMUXD_UNIX_PATH
     CMUXTERM_REPO_ROOT
@@ -242,7 +126,6 @@ typeset -ga _CMUX_TMUX_SYNC_KEYS=(
     CMUX_PORT
     CMUX_PORT_END
     CMUX_PORT_RANGE
-    CMUX_REMOTE_DAEMON_ALLOW_LOCAL_BUILD
     CMUX_SHELL_INTEGRATION
     CMUX_SHELL_INTEGRATION_DIR
     CMUX_SOCKET_ENABLE
@@ -1098,7 +981,6 @@ _cmux_command_starts_nested_shell() {
 }
 
 _cmux_preexec() {
-    _cmux_normalize_claude_config_dir
     if (( ! _CMUX_DELAY_TERM_RESTORE_UNTIL_FIRST_PROMPT )); then
         _cmux_restore_terminal_identity_after_startup
     fi
@@ -1136,7 +1018,6 @@ _cmux_preexec() {
 
 _cmux_precmd() {
     local last_status=$?
-    _cmux_normalize_claude_config_dir
     if (( _CMUX_DELAY_TERM_RESTORE_UNTIL_FIRST_PROMPT )); then
         _CMUX_DELAY_TERM_RESTORE_UNTIL_FIRST_PROMPT=0
     fi

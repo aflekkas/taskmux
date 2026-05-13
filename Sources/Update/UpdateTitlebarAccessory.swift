@@ -444,15 +444,12 @@ struct TitlebarControlsView: View {
 
     private enum HintSlot: Int, CaseIterable {
         case toggleSidebar
-        case showNotifications
         case newTab
 
         var action: KeyboardShortcutSettings.Action {
             switch self {
             case .toggleSidebar:
                 return .toggleSidebar
-            case .showNotifications:
-                return .showNotifications
             case .newTab:
                 return .newTab
             }
@@ -549,35 +546,6 @@ struct TitlebarControlsView: View {
                 iconLabel(systemName: "sidebar.left", config: config)
             }
             .safeHelp(KeyboardShortcutSettings.Action.toggleSidebar.tooltip(String(localized: "titlebar.sidebar.tooltip", defaultValue: "Show or hide the sidebar")))
-
-            TitlebarControlButton(
-                config: config,
-                accessibilityIdentifier: "titlebarControl.showNotifications",
-                accessibilityLabel: String(localized: "titlebar.notifications.accessibilityLabel", defaultValue: "Notifications"),
-                action: {
-                #if DEBUG
-                cmuxDebugLog("titlebar.notifications")
-                #endif
-                onToggleNotifications()
-            }) {
-                ZStack(alignment: .topTrailing) {
-                    iconLabel(systemName: "bell", config: config)
-
-                    if notificationStore.unreadCount > 0 {
-                        Text("\(min(notificationStore.unreadCount, 99))")
-                            .font(.system(size: max(8, config.badgeSize - 5), weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: config.badgeSize, height: config.badgeSize)
-                            .background(
-                                Circle().fill(cmuxAccentColor())
-                            )
-                            .offset(x: config.badgeOffset.width, y: config.badgeOffset.height)
-                    }
-                }
-                .frame(width: config.buttonSize, height: config.buttonSize)
-            }
-            .background(NotificationsAnchorView { viewModel.notificationsAnchorView = $0 })
-            .safeHelp(KeyboardShortcutSettings.Action.showNotifications.tooltip(String(localized: "titlebar.notifications.tooltip", defaultValue: "Show notifications")))
 
             TitlebarControlButton(
                 config: config,
@@ -900,7 +868,7 @@ struct HiddenTitlebarSidebarControlsView: View {
                 case .toggleSidebar:
                     onToggleSidebar()
                 case .showNotifications:
-                    onToggleNotifications(anchorView)
+                    break
                 case .newTab:
                     onNewTab()
                 }
@@ -1782,7 +1750,6 @@ private struct NotificationPopoverRow: View {
 
 @MainActor
 final class UpdateTitlebarAccessoryController {
-    private weak var updateViewModel: UpdateViewModel?
     private var didStart = false
     private let attachedWindows = NSHashTable<NSWindow>.weakObjects()
     private var observers: [NSObjectProtocol] = []
@@ -1793,10 +1760,6 @@ final class UpdateTitlebarAccessoryController {
     private var lastKnownPresentationMode: WorkspacePresentationModeSettings.Mode = WorkspacePresentationModeSettings.mode()
     private var detachedNotificationsPopover: NSPopover?
     private var detachedNotificationsPopoverDelegate: DetachedNotificationsPopoverDelegate?
-
-    init(viewModel: UpdateViewModel) {
-        self.updateViewModel = viewModel
-    }
 
     deinit {
         for observer in observers {
@@ -1886,14 +1849,6 @@ final class UpdateTitlebarAccessoryController {
                 Task { @MainActor [weak self] in
                     self?.attachToExistingWindows()
                 }
-#if DEBUG
-                let env = ProcessInfo.processInfo.environment
-                if env["CMUX_UI_TEST_MODE"] == "1" {
-                    let ids = NSApp.windows.map { $0.identifier?.rawValue ?? "<nil>" }
-                    let delayText = String(format: "%.2f", delay)
-                    UpdateLogStore.shared.append("startup window scan (delay=\(delayText)) count=\(NSApp.windows.count) ids=\(ids.joined(separator: ","))")
-                }
-#endif
             }
             startupScanWorkItems.append(item)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
@@ -1945,13 +1900,6 @@ final class UpdateTitlebarAccessoryController {
         attachedWindows.add(window)
         applyAccessoryVisibility(for: window)
 
-#if DEBUG
-        let env = ProcessInfo.processInfo.environment
-        if env["CMUX_UI_TEST_MODE"] == "1" {
-            let ident = window.identifier?.rawValue ?? "<nil>"
-            UpdateLogStore.shared.append("attached titlebar accessories to window id=\(ident)")
-        }
-#endif
     }
 
     private func applyAccessoryVisibility(for window: NSWindow) {
@@ -2001,13 +1949,6 @@ final class UpdateTitlebarAccessoryController {
             window.invalidateShadow()
         }
 
-#if DEBUG
-        let env = ProcessInfo.processInfo.environment
-        if env["CMUX_UI_TEST_MODE"] == "1" {
-            let ident = window.identifier?.rawValue ?? "<nil>"
-            UpdateLogStore.shared.append("removed titlebar accessories from window id=\(ident)")
-        }
-#endif
     }
 
     private func isSettingsWindow(_ window: NSWindow) -> Bool {

@@ -586,20 +586,7 @@ struct CmuxTaskManagerSnapshot {
     }
 
     private static func agentAssetName(for candidates: [String?]) -> String? {
-        for candidate in candidates.compactMap({ $0?.lowercased() }) {
-            if candidate.contains("opencode") {
-                return SessionAgent.opencode.assetName
-            }
-            if candidate.contains("hermes") {
-                return SessionAgent.hermesAgent.assetName
-            }
-            if candidate.contains("claude") {
-                return SessionAgent.claude.assetName
-            }
-            if candidate.contains("codex") {
-                return SessionAgent.codex.assetName
-            }
-        }
+        _ = candidates
         return nil
     }
 

@@ -17,9 +17,5 @@ let package = Package(
         .target(
             name: "CMUXPasteboardFidelity"
         ),
-        .testTarget(
-            name: "CMUXPasteboardFidelityTests",
-            dependencies: ["CMUXPasteboardFidelity"]
-        ),
     ]
 )

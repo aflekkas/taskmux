@@ -117,49 +117,7 @@ private enum RemoteDropUploadError: LocalizedError {
     }
 }
 
-struct WorkspaceRemoteDaemonManifest: Decodable, Equatable {
-    struct Entry: Decodable, Equatable {
-        let goOS: String
-        let goArch: String
-        let assetName: String
-        let downloadURL: String
-        let sha256: String
-    }
-
-    let schemaVersion: Int
-    let appVersion: String
-    let releaseTag: String
-    let releaseURL: String
-    let checksumsAssetName: String
-    let checksumsURL: String
-    let entries: [Entry]
-
-    func entry(goOS: String, goArch: String) -> Entry? {
-        entries.first { $0.goOS == goOS && $0.goArch == goArch }
-    }
-}
-
 extension Workspace {
-    nonisolated static let remoteDaemonManifestInfoKey = WorkspaceRemoteSessionController.remoteDaemonManifestInfoKey
-
-    nonisolated static func remoteDaemonManifest(from infoDictionary: [String: Any]?) -> WorkspaceRemoteDaemonManifest? {
-        WorkspaceRemoteSessionController.remoteDaemonManifest(from: infoDictionary)
-    }
-
-    nonisolated static func remoteDaemonCachedBinaryURL(
-        version: String,
-        goOS: String,
-        goArch: String,
-        fileManager: FileManager = .default
-    ) throws -> URL {
-        try WorkspaceRemoteSessionController.remoteDaemonCachedBinaryURL(
-            version: version,
-            goOS: goOS,
-            goArch: goArch,
-            fileManager: fileManager
-        )
-    }
-
     func sessionSnapshot(
         includeScrollback: Bool,
         restorableAgentIndex: RestorableAgentSessionIndex? = nil
@@ -768,10 +726,7 @@ extension Workspace {
                 restorableAgent: restorableAgent,
                 tmuxStartCommand: restoredTmuxStartCommand
             )
-            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled()
-            let restoredAgentResumeInput = autoResumeAgentSessions
-                ? restorableAgent?.resumeStartupInput()
-                : nil
+            let restoredAgentResumeInput: String? = nil
 #if DEBUG
             if let restorableAgent {
                 let sessionPreview = String(restorableAgent.sessionId.prefix(8))
@@ -781,7 +736,7 @@ extension Workspace {
                     "kind=\(restorableAgent.kind.rawValue) session=\(sessionPreview) " +
                     "hasLaunch=\(restorableAgent.launchCommand == nil ? 0 : 1) " +
                     "launchArgc=\(launchArgc) hasResume=\(restoredAgentResumeInput == nil ? 0 : 1) " +
-                    "autoResume=\(autoResumeAgentSessions ? 1 : 0) " +
+                    "autoResume=0 " +
                     "replayScrollback=\(shouldReplayScrollback ? 1 : 0)"
                 )
             }
@@ -4957,12 +4912,9 @@ final class WorkspaceRemoteSessionController {
         let remotePath = remoteLocation.absolutePath
         let explicitOverrideBinary = Self.explicitRemoteDaemonBinaryURL()
         let forceExplicitOverrideInstall = explicitOverrideBinary != nil
-        debugLog(
-            "remote.bootstrap.platform os=\(platform.goOS) arch=\(platform.goArch) " +
-            "version=\(version) remotePath=\(remotePath) relativePath=\(remoteLocation.relativePath) " +
-            "allowLocalBuildFallback=\(Self.allowLocalDaemonBuildFallback() ? 1 : 0) " +
-            "explicitOverride=\(forceExplicitOverrideInstall ? 1 : 0)"
-        )
+        let fallbackFlag = Self.allowLocalDaemonBuildFallback() ? 1 : 0
+        let overrideFlag = forceExplicitOverrideInstall ? 1 : 0
+        debugLog("remote.bootstrap.platform os=\(platform.goOS) arch=\(platform.goArch) version=\(version) remotePath=\(remotePath) relativePath=\(remoteLocation.relativePath) allowLocalBuildFallback=\(fallbackFlag) explicitOverride=\(overrideFlag)")
 
         let hadExistingBinary = bootstrapState.binaryExists
         debugLog("remote.bootstrap.binaryExists remotePath=\(remotePath) exists=\(hadExistingBinary ? 1 : 0)")
@@ -5136,58 +5088,7 @@ final class WorkspaceRemoteSessionController {
         )
     }
 
-    static let remoteDaemonManifestInfoKey = "CMUXRemoteDaemonManifestJSON"
-
-    static func remoteDaemonManifest(from infoDictionary: [String: Any]?) -> WorkspaceRemoteDaemonManifest? {
-        guard let rawManifest = infoDictionary?[remoteDaemonManifestInfoKey] as? String else { return nil }
-        let trimmed = rawManifest.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard let data = trimmed.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(WorkspaceRemoteDaemonManifest.self, from: data)
-    }
-
-    private static func remoteDaemonManifest() -> WorkspaceRemoteDaemonManifest? {
-        remoteDaemonManifest(from: Bundle.main.infoDictionary)
-    }
-
-    private static func remoteDaemonCacheRoot(fileManager: FileManager = .default) throws -> URL {
-        let appSupportRoot = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let cacheRoot = appSupportRoot
-            .appendingPathComponent("cmux", isDirectory: true)
-            .appendingPathComponent("remote-daemons", isDirectory: true)
-        try fileManager.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
-        return cacheRoot
-    }
-
-    static func remoteDaemonCachedBinaryURL(
-        version: String,
-        goOS: String,
-        goArch: String,
-        fileManager: FileManager = .default
-    ) throws -> URL {
-        try remoteDaemonCacheRoot(fileManager: fileManager)
-            .appendingPathComponent(version, isDirectory: true)
-            .appendingPathComponent("\(goOS)-\(goArch)", isDirectory: true)
-            .appendingPathComponent("cmuxd-remote", isDirectory: false)
-    }
-
-    private static func sha256Hex(forFile url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
-        let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func allowLocalDaemonBuildFallback(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment["CMUX_REMOTE_DAEMON_ALLOW_LOCAL_BUILD"] == "1"
-    }
-
     private static func explicitRemoteDaemonBinaryURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
-        guard allowLocalDaemonBuildFallback(environment: environment) else { return nil }
         guard let path = environment["CMUX_REMOTE_DAEMON_BINARY"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !path.isEmpty else {
             return nil
@@ -5203,102 +5104,6 @@ final class WorkspaceRemoteSessionController {
             .appendingPathComponent("cmuxd-remote", isDirectory: false)
     }
 
-    /// Fetch the live manifest JSON from the release, returning nil on any failure.
-    private static func fetchRemoteManifestLocked(releaseURL: String, version: String) -> WorkspaceRemoteDaemonManifest? {
-        guard let manifestURL = URL(string: "\(releaseURL)/cmuxd-remote-manifest.json") else { return nil }
-        let request = NSMutableURLRequest(url: manifestURL)
-        request.timeoutInterval = 15
-        request.setValue("cmux/\(version)", forHTTPHeaderField: "User-Agent")
-        let session = URLSession(configuration: .ephemeral)
-        let semaphore = DispatchSemaphore(value: 0)
-        var resultData: Data?
-        session.dataTask(with: request as URLRequest) { data, response, error in
-            defer { semaphore.signal() }
-            guard error == nil,
-                  let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else { return }
-            resultData = data
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + 20.0)
-        session.finishTasksAndInvalidate()
-        guard let data = resultData else { return nil }
-        return try? JSONDecoder().decode(WorkspaceRemoteDaemonManifest.self, from: data)
-    }
-
-    private func downloadRemoteDaemonBinaryLocked(entry: WorkspaceRemoteDaemonManifest.Entry, version: String, releaseURL: String? = nil) throws -> URL {
-        guard let url = URL(string: entry.downloadURL) else {
-            throw NSError(domain: "cmux.remote.daemon", code: 25, userInfo: [
-                NSLocalizedDescriptionKey: "remote daemon manifest has an invalid download URL",
-            ])
-        }
-
-        let cacheURL = try Self.remoteDaemonCachedBinaryURL(version: version, goOS: entry.goOS, goArch: entry.goArch)
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-        let request = NSMutableURLRequest(url: url)
-        request.timeoutInterval = 60
-        request.setValue("cmux/\(version)", forHTTPHeaderField: "User-Agent")
-        let session = URLSession(configuration: .ephemeral)
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var downloadedURL: URL?
-        var downloadError: Error?
-        session.downloadTask(with: request as URLRequest) { localURL, response, error in
-            defer { semaphore.signal() }
-            if let error {
-                downloadError = error
-                return
-            }
-            if let httpResponse = response as? HTTPURLResponse,
-               !(200...299).contains(httpResponse.statusCode) {
-                downloadError = NSError(domain: "cmux.remote.daemon", code: 26, userInfo: [
-                    NSLocalizedDescriptionKey: "remote daemon download failed with HTTP \(httpResponse.statusCode)",
-                ])
-                return
-            }
-            downloadedURL = localURL
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + 75.0)
-        session.finishTasksAndInvalidate()
-
-        if let downloadError {
-            throw downloadError
-        }
-        guard let downloadedURL else {
-            throw NSError(domain: "cmux.remote.daemon", code: 27, userInfo: [
-                NSLocalizedDescriptionKey: "remote daemon download did not produce a file",
-            ])
-        }
-
-        let downloadedSHA = try Self.sha256Hex(forFile: downloadedURL)
-        if downloadedSHA != entry.sha256.lowercased() {
-            // The embedded manifest's checksum doesn't match the downloaded binary.
-            // This can happen when a newer nightly overwrites the shared release
-            // asset after this build's manifest was embedded. As a fallback, fetch
-            // the live manifest from the release and verify against that.
-            if let releaseURL,
-               let liveManifest = Self.fetchRemoteManifestLocked(releaseURL: releaseURL, version: version),
-               let liveEntry = liveManifest.entry(goOS: entry.goOS, goArch: entry.goArch),
-               downloadedSHA == liveEntry.sha256.lowercased() {
-                debugLog("remote.download.checksum-fallback: embedded manifest checksum stale, live manifest matched for \(entry.assetName)")
-            } else {
-                throw NSError(domain: "cmux.remote.daemon", code: 28, userInfo: [
-                    NSLocalizedDescriptionKey: "remote daemon checksum mismatch for \(entry.assetName)",
-                ])
-            }
-        }
-
-        let tempURL = cacheURL.deletingLastPathComponent()
-            .appendingPathComponent(".\(cacheURL.lastPathComponent).tmp-\(UUID().uuidString)")
-        try? fileManager.removeItem(at: tempURL)
-        try fileManager.moveItem(at: downloadedURL, to: tempURL)
-        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempURL.path)
-        try? fileManager.removeItem(at: cacheURL)
-        try fileManager.moveItem(at: tempURL, to: cacheURL)
-        return cacheURL
-    }
-
     private func buildLocalDaemonBinary(goOS: String, goArch: String, version: String) throws -> URL {
         if let explicitBinary = Self.explicitRemoteDaemonBinaryURL(),
            FileManager.default.isExecutableFile(atPath: explicitBinary.path) {
@@ -5306,33 +5111,9 @@ final class WorkspaceRemoteSessionController {
             return explicitBinary
         }
 
-        if let manifest = Self.remoteDaemonManifest(),
-           manifest.appVersion == version,
-           let entry = manifest.entry(goOS: goOS, goArch: goArch) {
-            let cacheURL = try Self.remoteDaemonCachedBinaryURL(version: manifest.appVersion, goOS: goOS, goArch: goArch)
-            if FileManager.default.fileExists(atPath: cacheURL.path) {
-                let cachedSHA = try Self.sha256Hex(forFile: cacheURL)
-                if cachedSHA == entry.sha256.lowercased(),
-                   FileManager.default.isExecutableFile(atPath: cacheURL.path) {
-                    debugLog("remote.build.cached path=\(cacheURL.path)")
-                    return cacheURL
-                }
-                try? FileManager.default.removeItem(at: cacheURL)
-            }
-            let downloadedURL = try downloadRemoteDaemonBinaryLocked(entry: entry, version: manifest.appVersion, releaseURL: manifest.releaseURL)
-            debugLog("remote.build.downloaded path=\(downloadedURL.path)")
-            return downloadedURL
-        }
-
-        guard Self.allowLocalDaemonBuildFallback() else {
-            throw NSError(domain: "cmux.remote.daemon", code: 20, userInfo: [
-                NSLocalizedDescriptionKey: "this build does not include a verified cmuxd-remote manifest for \(goOS)-\(goArch). Use a release/nightly build, or set CMUX_REMOTE_DAEMON_ALLOW_LOCAL_BUILD=1 for a dev-only fallback.",
-            ])
-        }
-
         guard let repoRoot = Self.findRepoRoot() else {
             throw NSError(domain: "cmux.remote.daemon", code: 20, userInfo: [
-                NSLocalizedDescriptionKey: "cannot locate cmux repo root for dev-only cmuxd-remote build fallback",
+                NSLocalizedDescriptionKey: "cannot locate cmux repo root for local cmuxd-remote build",
             ])
         }
         let daemonRoot = repoRoot.appendingPathComponent("daemon/remote", isDirectory: true)
@@ -5344,7 +5125,7 @@ final class WorkspaceRemoteSessionController {
         }
         guard let goBinary = Self.which("go") else {
             throw NSError(domain: "cmux.remote.daemon", code: 22, userInfo: [
-                NSLocalizedDescriptionKey: "go is required for the dev-only cmuxd-remote build fallback",
+                NSLocalizedDescriptionKey: "go is required to build cmuxd-remote locally",
             ])
         }
 
@@ -5703,6 +5484,10 @@ final class WorkspaceRemoteSessionController {
             return baseVersion
         }
         return "\(baseVersion)-dev-\(sourceFingerprint)"
+    }
+
+    private static func allowLocalDaemonBuildFallback() -> Bool {
+        false
     }
 
     private static let cachedRemoteDaemonSourceFingerprint: String? = computeRemoteDaemonSourceFingerprint()
@@ -10020,7 +9805,7 @@ final class Workspace: Identifiable, ObservableObject {
         // "ssh exited …" message the startup script prints. Otherwise Ghostty silently
         // respawns a local login shell when the command exits (the PTY falls through
         // to $SHELL), and a dead VM looks identical to a healthy workspace with a
-        // local prompt — which is what we saw during dogfood.
+        // local prompt — which makes a dead VM look like a healthy workspace.
         if startupCommand != nil {
             var template = inheritedConfig ?? CmuxSurfaceConfigTemplate()
             template.waitAfterCommand = true
@@ -12051,7 +11836,7 @@ final class Workspace: Identifiable, ObservableObject {
         // local shell that first prints a clearly-coloured banner explaining what happened.
         // Without this banner a dead VM surfaces as an ordinary local `lawrence@mac ~ %`
         // prompt, which looks identical to "I never connected" and was mis-read during
-        // dogfood as "cmux disconnected silently".
+        // manual checks as "cmux disconnected silently".
         let bannerTarget = pendingReplacementBannerRemoteTarget
         pendingReplacementBannerRemoteTarget = nil
         let replacementInitialCommand: String? = bannerTarget.map { Self.replacementShellScriptWithBanner(target: $0) }
@@ -12892,33 +12677,6 @@ final class Workspace: Identifiable, ObservableObject {
         _ = failure.runModal()
     }
 
-    private func handleSessionDrop(
-        entry: SessionEntry,
-        destination: BonsplitController.ExternalTabDropRequest.Destination
-    ) -> Bool {
-        guard let resumeCommand = entry.resumeCommand else { return false }
-        let inputWithReturn = resumeCommand + "\n"
-        switch destination {
-        case .insert(let paneId, _):
-            let panel = newTerminalSurface(
-                inPane: paneId,
-                focus: true,
-                workingDirectory: entry.resumeWorkingDirectory,
-                initialInput: inputWithReturn
-            )
-            return panel != nil
-        case .split(let paneId, let orientation, let insertFirst):
-            let panel = splitPaneWithNewTerminal(
-                targetPane: paneId,
-                orientation: orientation,
-                insertFirst: insertFirst,
-                workingDirectory: entry.resumeWorkingDirectory,
-                initialInput: inputWithReturn
-            )
-            return panel != nil
-        }
-    }
-
     func handleFilePreviewDrop(
         entry: FilePreviewDragEntry,
         destination: BonsplitController.ExternalTabDropRequest.Destination
@@ -13099,11 +12857,6 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     func handleExternalTabDrop(_ request: BonsplitController.ExternalTabDropRequest) -> Bool {
-        // Session-index drag → spawn a brand new terminal at the destination instead
-        // of moving an existing tab.
-        if let entry = SessionDragRegistry.shared.consume(id: request.tabId.uuid) {
-            return handleSessionDrop(entry: entry, destination: request.destination)
-        }
         if let entry = FilePreviewDragRegistry.shared.consume(id: request.tabId.uuid) {
             return handleFilePreviewDrop(entry: entry, destination: request.destination)
         }
@@ -14197,12 +13950,6 @@ extension Workspace: BonsplitDelegate {
             switch builtInAction {
             case .newWorkspace:
                 owningTabManager?.addWorkspace()
-            case .cloudVM:
-                _ = AppDelegate.shared?.performCloudVMAction(
-                    tabManager: owningTabManager,
-                    preferredWindow: presentingWindow,
-                    debugSource: "surfaceTabBar.cloudVM"
-                )
             case .newTerminal, .newBrowser, .splitRight, .splitDown:
                 break
             }

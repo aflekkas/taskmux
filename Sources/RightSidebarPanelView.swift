@@ -1,6 +1,5 @@
 import AppKit
 import Bonsplit
-import CMUXWorkstream
 import SwiftUI
 
 private func rightSidebarDebugResponder(_ responder: NSResponder?) -> String {
@@ -48,7 +47,7 @@ nonisolated enum RightSidebarMode: String, CaseIterable, Codable, Sendable {
 }
 
 extension RightSidebarMode {
-    static let paneModes: [RightSidebarMode] = [.files, .find, .sessions]
+    static let paneModes: [RightSidebarMode] = [.files, .find]
 
     var canOpenAsPane: Bool {
         Self.paneModes.contains(self)
@@ -65,11 +64,10 @@ extension RightSidebarMode {
             return .find
         }
         if KeyboardShortcutSettings.shortcut(for: .switchRightSidebarToSessions).matches(event: event) {
-            return .sessions
+            return nil
         }
-        if KeyboardShortcutSettings.shortcut(for: .switchRightSidebarToFeed).matches(event: event),
-           RightSidebarMode.feed.isAvailable() {
-            return .feed
+        if KeyboardShortcutSettings.shortcut(for: .switchRightSidebarToFeed).matches(event: event) {
+            return nil
         }
         if KeyboardShortcutSettings.shortcut(for: .switchRightSidebarToDock).matches(event: event),
            RightSidebarMode.dock.isAvailable() {
@@ -150,10 +148,8 @@ enum RightSidebarKeyboardNavigation {
 struct RightSidebarPanelView: View {
     @ObservedObject var fileExplorerStore: FileExplorerStore
     @ObservedObject var fileExplorerState: FileExplorerState
-    @ObservedObject var sessionIndexStore: SessionIndexStore
     let titlebarHeight: CGFloat
     let workspaceId: UUID?
-    let onResumeSession: ((SessionEntry) -> Void)?
     let onOpenFilePreview: (String) -> Void
     let onOpenAsPane: (RightSidebarMode) -> Void
     let onClose: () -> Void
@@ -173,13 +169,6 @@ struct RightSidebarPanelView: View {
     private let focusShortcutHintYOffset = ShortcutHintDebugSettings.defaultRightSidebarFocusHintY
     @AppStorage(RightSidebarBetaFeatureSettings.dockEnabledKey)
     private var dockEnabled = RightSidebarBetaFeatureSettings.defaultDockEnabled
-
-    // Re-reading the observable store inside modeBar causes SwiftUI to
-    // track the pending count so the badge updates live when hooks push
-    // new items.
-    private var feedPendingCount: Int {
-        FeedCoordinator.shared.store?.pending.count ?? 0
-    }
 
     private var availableModes: [RightSidebarMode] {
         RightSidebarMode.availableModes(dockEnabled: dockEnabled)
@@ -236,7 +225,7 @@ struct RightSidebarPanelView: View {
                     ModeBarButton(
                         mode: mode,
                         isSelected: fileExplorerState.mode == mode,
-                        badgeCount: mode == .feed ? feedPendingCount : 0,
+                        badgeCount: 0,
                         shortcutHint: KeyboardShortcutSettings.shortcut(for: mode.shortcutAction),
                         showsShortcutHint: showsModeShortcutHints
                     ) {
@@ -379,29 +368,21 @@ struct RightSidebarPanelView: View {
                 onOpenFilePreview: onOpenFilePreview,
                 presentation: .find
             )
-        case .sessions:
-            SessionIndexView(store: sessionIndexStore, onResume: onResumeSession)
-                .onAppear {
-                    sessionIndexStore.setCurrentDirectoryIfChanged(sessionIndexDirectory)
-                }
-        case .feed:
-            FeedPanelView()
+        case .sessions, .feed:
+            EmptyView()
         case .dock:
-            DockPanelView(rootDirectory: sessionIndexDirectory, workspaceId: workspaceId, store: dockStore)
+            DockPanelView(rootDirectory: dockRootDirectory, workspaceId: workspaceId, store: dockStore)
         }
     }
 
-    private var sessionIndexDirectory: String? {
+    private var dockRootDirectory: String? {
         fileExplorerStore.rootPath.isEmpty ? nil : fileExplorerStore.rootPath
     }
 
     private func selectMode(_ mode: RightSidebarMode) {
         fileExplorerState.mode = mode
-        if fileExplorerState.mode == .sessions {
-            sessionIndexStore.setCurrentDirectoryIfChanged(sessionIndexDirectory)
-            if sessionIndexStore.entries.isEmpty {
-                sessionIndexStore.reload()
-            }
+        if fileExplorerState.mode == .sessions || fileExplorerState.mode == .feed {
+            fileExplorerState.mode = .files
         }
     }
 

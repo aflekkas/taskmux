@@ -982,6 +982,7 @@ final class TerminalNotificationStore: ObservableObject {
         cooldownKey: String? = nil,
         cooldownInterval: TimeInterval? = nil
     ) {
+        return
         let now = Date()
         let resolvedCooldownInterval: TimeInterval?
         if let cooldownInterval, cooldownInterval.isFinite, cooldownInterval > 0 {

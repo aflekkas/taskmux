@@ -28,7 +28,7 @@ struct MinimalModeSidebarControlActionProxyView: NSViewRepresentable {
 
 enum TitlebarControlsHitRegions {
     static let outerLeadingPadding: CGFloat = 4
-    static let buttonCount = 3
+    static let buttonCount = 2
 
     static func buttonXRanges(config: TitlebarControlsStyleConfig) -> [ClosedRange<CGFloat>] {
         var ranges: [ClosedRange<CGFloat>] = []
@@ -79,7 +79,7 @@ final class MinimalModeSidebarControlActionView: NSView {
 
     override init(frame frameRect: NSRect) {
         var buttons: [MinimalModeSidebarControlActionSlot: MinimalModeSidebarControlButton] = [:]
-        for slot in [MinimalModeSidebarControlActionSlot.toggleSidebar, .showNotifications, .newTab] {
+        for slot in [MinimalModeSidebarControlActionSlot.toggleSidebar, .newTab] {
             buttons[slot] = Self.makeButton(for: slot)
         }
         self.buttons = buttons
@@ -97,7 +97,7 @@ final class MinimalModeSidebarControlActionView: NSView {
 
     required init?(coder: NSCoder) {
         var buttons: [MinimalModeSidebarControlActionSlot: MinimalModeSidebarControlButton] = [:]
-        for slot in [MinimalModeSidebarControlActionSlot.toggleSidebar, .showNotifications, .newTab] {
+        for slot in [MinimalModeSidebarControlActionSlot.toggleSidebar, .newTab] {
             buttons[slot] = Self.makeButton(for: slot)
         }
         self.buttons = buttons
@@ -139,7 +139,7 @@ final class MinimalModeSidebarControlActionView: NSView {
 
     override func accessibilityChildren() -> [Any]? {
         guard isRevealed || !requiresRevealedState else { return [] }
-        return [MinimalModeSidebarControlActionSlot.toggleSidebar, .showNotifications, .newTab].compactMap { buttons[$0] }
+        return [MinimalModeSidebarControlActionSlot.toggleSidebar, .newTab].compactMap { buttons[$0] }
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -253,10 +253,6 @@ final class MinimalModeSidebarControlActionView: NSView {
             .sink { [weak self] _ in self?.syncButtons() }
             .store(in: &cancellables)
 
-        NotificationsPopoverVisibilityState.shared.$shownWindowNumbers
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.syncButtons() }
-            .store(in: &cancellables)
     }
 
     private func syncButtons() {
@@ -272,7 +268,6 @@ final class MinimalModeSidebarControlActionView: NSView {
         guard requiresRevealedState else { return true }
         guard let window else { return false }
         return MinimalModeSidebarChromeHoverState.shared.hoveredWindowNumber == window.windowNumber
-            || NotificationsPopoverVisibilityState.shared.isShown(in: window.windowNumber)
     }
 
     private func shouldAcceptAction(at localPoint: NSPoint) -> Bool {

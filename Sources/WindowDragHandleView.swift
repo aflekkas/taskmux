@@ -118,7 +118,7 @@ private func windowDragHandleEmitBreadcrumb(
     for (name, value) in extraData {
         data[name] = value
     }
-    sentryBreadcrumb(message, category: "titlebar.drag", data: data)
+    diagnosticsBreadcrumb(message, category: "titlebar.drag", data: data)
 }
 
 private func windowDragHandleShouldResolveActiveHitCapture(
@@ -553,22 +553,19 @@ enum MinimalModeSidebarTitlebarControlsMetrics {
         MinimalModeTitlebarDebugSettings.leftControlsTopInset(defaults: defaults)
     }
 
-    static let hostWidth: CGFloat = 124
+    static let hostWidth: CGFloat = 84
     static let hostHeight: CGFloat = 28
     static let singleButtonHostWidth: CGFloat = hostHeight
 }
 
 enum MinimalModeSidebarControlActionSlot: Int {
     case toggleSidebar
-    case showNotifications
     case newTab
 
     var accessibilityIdentifier: String {
         switch self {
         case .toggleSidebar:
             return "titlebarControl.toggleSidebar"
-        case .showNotifications:
-            return "titlebarControl.showNotifications"
         case .newTab:
             return "titlebarControl.newTab"
         }
@@ -578,8 +575,6 @@ enum MinimalModeSidebarControlActionSlot: Int {
         switch self {
         case .toggleSidebar:
             return String(localized: "titlebar.sidebar.accessibilityLabel", defaultValue: "Toggle Sidebar")
-        case .showNotifications:
-            return String(localized: "titlebar.notifications.accessibilityLabel", defaultValue: "Notifications")
         case .newTab:
             return String(localized: "titlebar.newWorkspace.accessibilityLabel", defaultValue: "New Workspace")
         }
@@ -589,8 +584,6 @@ enum MinimalModeSidebarControlActionSlot: Int {
         switch self {
         case .toggleSidebar:
             return "toggleSidebar"
-        case .showNotifications:
-            return "showNotifications"
         case .newTab:
             return "newTab"
         }

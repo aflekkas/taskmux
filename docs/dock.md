@@ -2,7 +2,8 @@
 
 Dock lets you pin terminal controls into the cmux right sidebar. Each Dock control runs a command in its own Ghostty-backed terminal section, so TUIs keep normal keyboard behavior such as arrow keys, `j` / `k`, and `Ctrl-C`.
 
-Dock controls are useful for project dashboards, git views, logs, queues, local services, test watchers, dev servers, and custom TUIs. Feed can be added as one optional control with `cmux feed tui --opentui`, but Dock is not limited to Feed.
+Dock controls are useful for project dashboards, git views, logs, queues, local
+services, test watchers, dev servers, and custom TUIs.
 
 Each command starts inside the terminal's non-interactive login shell. That keeps the user's normal PATH and toolchain setup without running prompt code before the TUI starts. When the command exits, Dock drops into an interactive login shell in the same section so the user can inspect, rerun, or exit.
 
@@ -75,15 +76,15 @@ Global Dock config at `~/.config/cmux/dock.json` is treated as personal config a
 
 Do not put secrets, tokens, or machine-specific private paths in a shared project Dock config. Read secrets from the user's shell, local env files, or existing dev tooling.
 
-## Agent Setup
+## Setup Guidance
 
-When asking a coding agent to create a Dock config, tell it to run:
+When creating a Dock config, inspect the project first, choose project config or
+global config deliberately, validate the JSON, and summarize each command before
+trusting the config. The local docs entrypoint is:
 
 ```sh
 cmux docs dock
 ```
-
-The agent should inspect the project first, choose project config or global config deliberately, ask the user when the desired controls are unclear, validate the JSON, and summarize each command before the user trusts the config.
 
 ## Naming
 

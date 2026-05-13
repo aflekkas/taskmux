@@ -194,9 +194,7 @@ struct WorkspaceContentView: View {
         let appearance = PanelAppearance.fromConfig(config)
         let isSplit = workspace.bonsplitController.allPaneIds.count > 1 ||
             workspace.panels.count > 1
-        let usesWorkspacePaneOverlay = TmuxOverlayExperimentSettings.target().usesWorkspacePaneOverlay
-        let isWorkspaceManuallyUnread = notificationStore.hasManualUnread(forTabId: workspace.id)
-        let workspaceManualUnreadPanelId = workspace.representativePanelIdForWorkspaceManualUnread()
+        let usesWorkspacePaneOverlay = false
 
         // Inactive workspaces are kept alive in a ZStack (for state preservation) but their
         // AppKit-backed views can still intercept drags. Disable drop acceptance for them.
@@ -226,15 +224,6 @@ struct WorkspaceContentView: View {
                     isSelectedInPane: isSelectedInPane,
                     isFocused: isFocused
                 )
-                let showsNotificationRing = Workspace.shouldShowUnreadIndicator(
-                    hasUnreadNotification: notificationStore.hasVisibleNotificationIndicator(
-                        forTabId: workspace.id,
-                        surfaceId: panel.id
-                    ),
-                    isManuallyUnread: workspace.manualUnreadPanelIds.contains(panel.id),
-                    isWorkspaceManuallyUnread: isWorkspaceManuallyUnread,
-                    isWorkspaceManualUnreadRepresentative: workspaceManualUnreadPanelId == panel.id
-                )
                 PanelContentView(
                     panel: panel,
                     workspaceId: workspace.id,
@@ -245,7 +234,7 @@ struct WorkspaceContentView: View {
                     portalPriority: workspacePortalPriority,
                     isSplit: isSplit,
                     appearance: appearance,
-                    hasUnreadNotification: showsNotificationRing && !usesWorkspacePaneOverlay,
+                    hasUnreadNotification: false && !usesWorkspacePaneOverlay,
                     onFocus: {
                         // Keep bonsplit focus in sync with the AppKit first responder for the
                         // active workspace. This prevents divergence between the blue focused-tab
@@ -294,16 +283,7 @@ struct WorkspaceContentView: View {
             guard isVisible else { return }
             flushDeferredThemeRefreshIfNeeded()
         }
-        .onChange(of: notificationStore.notifications) { _, _ in
-            syncBonsplitNotificationBadges()
-        }
         .onChange(of: workspace.manualUnreadPanelIds) { _, _ in
-            syncBonsplitNotificationBadges()
-        }
-        .onChange(of: isWorkspaceManuallyUnread) { _, _ in
-            syncBonsplitNotificationBadges()
-        }
-        .onChange(of: workspaceManualUnreadPanelId) { _, _ in
             syncBonsplitNotificationBadges()
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyConfigDidReload)) { _ in
@@ -346,17 +326,7 @@ struct WorkspaceContentView: View {
                 let panelId = workspace.panelIdFromSurfaceId(tab.id)
                 let expectedKind = panelId.flatMap { workspace.panelKind(panelId: $0) }
                 let expectedPinned = panelId.map { workspace.isPanelPinned($0) } ?? false
-                let shouldShow = panelId.map {
-                    Workspace.shouldShowUnreadIndicator(
-                        hasUnreadNotification: notificationStore.hasVisibleNotificationIndicator(
-                            forTabId: workspace.id,
-                            surfaceId: $0
-                        ),
-                        isManuallyUnread: manualUnread.contains($0),
-                        isWorkspaceManuallyUnread: isWorkspaceManuallyUnread,
-                        isWorkspaceManualUnreadRepresentative: workspaceManualUnreadPanelId == $0
-                    )
-                } ?? false
+                let shouldShow = false
                 let kindUpdate: String?? = expectedKind.map { .some($0) }
 
                 if tab.showsNotificationBadge != shouldShow ||
@@ -437,43 +407,8 @@ struct WorkspaceContentView: View {
         includeContainerOffset: Bool,
         trimMode: TmuxWorkspacePaneOverlayTrimMode
     ) -> [CGRect] {
-        guard let layoutSnapshot else { return [] }
-        let isWorkspaceManuallyUnread = notificationStore.hasManualUnread(forTabId: workspace.id)
-        let workspaceManualUnreadPanelId = workspace.representativePanelIdForWorkspaceManualUnread()
-
-        return layoutSnapshot.panes.compactMap { pane in
-            guard let selectedTabId = pane.selectedTabId,
-                  let tabUUID = UUID(uuidString: selectedTabId),
-                  let panelId = workspace.panelIdFromSurfaceId(TabID(uuid: tabUUID)) else {
-                return nil
-            }
-
-            let shouldShowUnread = Workspace.shouldShowUnreadIndicator(
-                hasUnreadNotification: notificationStore.hasVisibleNotificationIndicator(
-                    forTabId: workspace.id,
-                    surfaceId: panelId
-                ),
-                isManuallyUnread: workspace.manualUnreadPanelIds.contains(panelId),
-                isWorkspaceManuallyUnread: isWorkspaceManuallyUnread,
-                isWorkspaceManualUnreadRepresentative: workspaceManualUnreadPanelId == panelId
-            )
-            guard shouldShowUnread else { return nil }
-
-            let paneRect = pane.frame.cgRect
-            let rect: CGRect
-            if includeContainerOffset {
-                rect = paneRect.offsetBy(
-                    dx: 0,
-                    dy: -CGFloat(layoutSnapshot.containerFrame.y)
-                )
-            } else {
-                rect = paneRect.offsetBy(
-                    dx: -CGFloat(layoutSnapshot.containerFrame.x),
-                    dy: -CGFloat(layoutSnapshot.containerFrame.y)
-                )
-            }
-            return tmuxWorkspacePaneContentRect(rect, trimMode: trimMode)
-        }
+        _ = (workspace, notificationStore, layoutSnapshot, includeContainerOffset, trimMode)
+        return []
     }
 
     static func tmuxWorkspacePaneOverlayRect(

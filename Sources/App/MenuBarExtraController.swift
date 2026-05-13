@@ -13,7 +13,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let onOpenNotification: (TerminalNotification) -> Void
     private let onJumpToLatestUnread: () -> Void
     private let onOpenTaskManager: () -> Void
-    private let onCheckForUpdates: () -> Void
     private let onOpenPreferences: () -> Void
     private let onQuitApp: () -> Void
     private var notificationMenuSnapshotCancellable: AnyCancellable?
@@ -24,13 +23,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     private let globalSearchItem = NSMenuItem(title: String(localized: "statusMenu.searchAllWindows", defaultValue: "Search All Windows..."), action: nil, keyEquivalent: "")
     private let showMainWindowItem = NSMenuItem(title: String(localized: "statusMenu.showCmux", defaultValue: "Show cmux"), action: nil, keyEquivalent: "")
     private let taskManagerItem = NSMenuItem(title: String(localized: "statusMenu.taskManager", defaultValue: "Task Manager..."), action: nil, keyEquivalent: "")
-    private let notificationListSeparator = NSMenuItem.separator()
-    private let notificationSectionSeparator = NSMenuItem.separator()
-    private let showNotificationsItem = NSMenuItem(title: String(localized: "statusMenu.showNotifications", defaultValue: "Show Notifications"), action: nil, keyEquivalent: "")
-    private let jumpToUnreadItem = NSMenuItem(title: String(localized: "statusMenu.jumpToLatestUnread", defaultValue: "Jump to Latest Unread"), action: nil, keyEquivalent: "")
-    private let markAllReadItem = NSMenuItem(title: String(localized: "statusMenu.markAllRead", defaultValue: "Mark All Read"), action: nil, keyEquivalent: "")
-    private let clearAllItem = NSMenuItem(title: String(localized: "statusMenu.clearAll", defaultValue: "Clear All"), action: nil, keyEquivalent: "")
-    private let checkForUpdatesItem = NSMenuItem(title: String(localized: "menu.checkForUpdates", defaultValue: "Check for Updates…"), action: nil, keyEquivalent: "")
     private let preferencesItem = NSMenuItem(title: String(localized: "menu.preferences", defaultValue: "Preferences…"), action: nil, keyEquivalent: "")
     private let quitItem = NSMenuItem(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux"), action: nil, keyEquivalent: "")
 
@@ -43,7 +35,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         onOpenNotification: @escaping (TerminalNotification) -> Void,
         onJumpToLatestUnread: @escaping () -> Void,
         onOpenTaskManager: @escaping () -> Void,
-        onCheckForUpdates: @escaping () -> Void,
         onOpenPreferences: @escaping () -> Void,
         onQuitApp: @escaping () -> Void
     ) {
@@ -54,7 +45,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         self.onOpenNotification = onOpenNotification
         self.onJumpToLatestUnread = onJumpToLatestUnread
         self.onOpenTaskManager = onOpenTaskManager
-        self.onCheckForUpdates = onCheckForUpdates
         self.onOpenPreferences = onOpenPreferences
         self.onQuitApp = onQuitApp
         self.buildHintTitle = MenuBarBuildHintFormatter.menuTitle()
@@ -107,32 +97,6 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         taskManagerItem.action = #selector(taskManagerAction)
         menu.addItem(taskManagerItem)
 
-        menu.addItem(notificationListSeparator)
-        notificationSectionSeparator.isHidden = true
-        menu.addItem(notificationSectionSeparator)
-
-        showNotificationsItem.target = self
-        showNotificationsItem.action = #selector(showNotificationsAction)
-        menu.addItem(showNotificationsItem)
-
-        jumpToUnreadItem.target = self
-        jumpToUnreadItem.action = #selector(jumpToUnreadAction)
-        menu.addItem(jumpToUnreadItem)
-
-        markAllReadItem.target = self
-        markAllReadItem.action = #selector(markAllReadAction)
-        menu.addItem(markAllReadItem)
-
-        clearAllItem.target = self
-        clearAllItem.action = #selector(clearAllAction)
-        menu.addItem(clearAllItem)
-
-        menu.addItem(.separator())
-
-        checkForUpdatesItem.target = self
-        checkForUpdatesItem.action = #selector(checkForUpdatesAction)
-        menu.addItem(checkForUpdatesItem)
-
         preferencesItem.target = self
         preferencesItem.action = #selector(preferencesAction)
         menu.addItem(preferencesItem)
@@ -160,39 +124,21 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
     }
 
     private func refreshUI() {
-        refreshUI(snapshot: notificationStore.notificationMenuSnapshot)
+        refreshUI(snapshot: NotificationMenuSnapshot.empty)
     }
 
     private func refreshUI(snapshot: NotificationMenuSnapshot) {
-        let actualUnreadCount = snapshot.unreadCount
+        let displayedUnreadCount = 0
 
-        let displayedUnreadCount: Int
-#if DEBUG
-        displayedUnreadCount = MenuBarIconDebugSettings.displayedUnreadCount(actualUnreadCount: actualUnreadCount)
-#else
-        displayedUnreadCount = actualUnreadCount
-#endif
-
-        stateHintItem.title = snapshot.stateHintTitle
+        stateHintItem.title = String(localized: "statusMenu.ready", defaultValue: "Ready")
         showMainWindowItem.isHidden = !MenuBarOnlySettings.shouldShowMainWindowMenuItem()
 
         applyShortcut(KeyboardShortcutSettings.menuShortcut(for: .globalSearch), to: globalSearchItem)
-        applyShortcut(KeyboardShortcutSettings.menuShortcut(for: .showNotifications), to: showNotificationsItem)
-        applyShortcut(KeyboardShortcutSettings.menuShortcut(for: .jumpToUnread), to: jumpToUnreadItem)
-
-        jumpToUnreadItem.isEnabled = snapshot.hasUnreadNotifications
-        markAllReadItem.isEnabled = snapshot.hasUnreadNotifications
-        clearAllItem.isEnabled = snapshot.hasNotifications
-
-        rebuildInlineNotificationItems(recentNotifications: snapshot.recentNotifications)
+        rebuildInlineNotificationItems(recentNotifications: [])
 
         if let button = statusItem.button {
             button.image = MenuBarIconRenderer.makeImage(unreadCount: displayedUnreadCount)
-            button.toolTip = displayedUnreadCount == 0
-                ? "cmux"
-                : displayedUnreadCount == 1
-                    ? "cmux: " + String(localized: "statusMenu.tooltip.unread.one", defaultValue: "1 unread notification")
-                    : "cmux: " + String(localized: "statusMenu.tooltip.unread.other", defaultValue: "\(displayedUnreadCount) unread notifications")
+            button.toolTip = "cmux"
         }
     }
 
@@ -212,11 +158,9 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         }
         notificationItems.removeAll(keepingCapacity: true)
 
-        notificationListSeparator.isHidden = recentNotifications.isEmpty
-        notificationSectionSeparator.isHidden = recentNotifications.isEmpty
         guard !recentNotifications.isEmpty else { return }
 
-        let insertionIndex = menu.index(of: showNotificationsItem)
+        let insertionIndex = menu.index(of: preferencesItem)
         guard insertionIndex >= 0 else { return }
 
         for (offset, notification) in recentNotifications.enumerated() {
@@ -271,28 +215,8 @@ final class MenuBarExtraController: NSObject, NSMenuDelegate {
         onShowMainWindow()
     }
 
-    @objc private func showNotificationsAction() {
-        onShowNotifications()
-    }
-
-    @objc private func jumpToUnreadAction() {
-        onJumpToLatestUnread()
-    }
-
     @objc private func taskManagerAction() {
         onOpenTaskManager()
-    }
-
-    @objc private func markAllReadAction() {
-        notificationStore.markAllRead()
-    }
-
-    @objc private func clearAllAction() {
-        notificationStore.clearAll()
-    }
-
-    @objc private func checkForUpdatesAction() {
-        onCheckForUpdates()
     }
 
     @objc private func preferencesAction() {
@@ -314,6 +238,8 @@ private final class NotificationMenuItemPayload: NSObject {
 }
 
 struct NotificationMenuSnapshot: Equatable {
+    static let empty = NotificationMenuSnapshot(unreadCount: 0, hasNotifications: false, recentNotifications: [])
+
     let unreadCount: Int
     let hasNotifications: Bool
     let recentNotifications: [TerminalNotification]

@@ -6,22 +6,8 @@ extension cmuxApp {
     var helpCommands: some Commands {
         CommandGroup(replacing: .help) {
             primaryDocsHelpMenuItems
-            secondaryDocsHelpMenuItems
-
-            Divider()
-
-            splitCommandButton(title: String(localized: "sidebar.help.sendFeedback", defaultValue: "Send Feedback"), shortcut: menuShortcut(for: .sendFeedback)) {
-                presentFeedbackFromHelpMenu()
-            }
-
-            Button(String(localized: "command.checkForUpdates.title", defaultValue: "Check for Updates")) {
-                AppDelegate.shared?.checkForUpdates(nil)
-            }
-
-            Divider()
 
             helpResourceButton(.githubIssues)
-            helpResourceButton(.discord)
 
             Divider()
 
@@ -43,24 +29,6 @@ extension cmuxApp {
         helpResourceButton(.browserAutomation)
     }
 
-    @ViewBuilder
-    private var secondaryDocsHelpMenuItems: some View {
-        helpResourceButton(.notifications)
-        helpResourceButton(.ssh)
-        helpResourceButton(.skills)
-        agentIntegrationsHelpMenu
-        helpResourceButton(.changelog)
-    }
-
-    private var agentIntegrationsHelpMenu: some View {
-        Menu(String(localized: "menu.help.agentIntegrations", defaultValue: "Agent Integrations")) {
-            helpResourceButton(.claudeCodeTeams)
-            helpResourceButton(.ohMyOpenCode)
-            helpResourceButton(.ohMyCodex)
-            helpResourceButton(.ohMyClaudeCode)
-        }
-    }
-
     private func helpResourceButton(_ resource: CmuxHelpResource) -> some View {
         Button(resource.title) {
             NSWorkspace.shared.open(resource.url)
@@ -78,14 +46,4 @@ extension cmuxApp {
         }
     }
 
-    private func presentFeedbackFromHelpMenu() {
-        if let targetWindow = NSApp.keyWindow ?? NSApp.mainWindow {
-            FeedbackComposerBridge.openComposer(in: targetWindow)
-            return
-        }
-
-        if let targetWindow = AppDelegate.shared?.showMainWindowFromMenuBar() {
-            FeedbackComposerBridge.openComposer(in: targetWindow)
-        }
-    }
 }

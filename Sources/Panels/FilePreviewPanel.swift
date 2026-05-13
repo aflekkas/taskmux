@@ -889,8 +889,6 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
 
     func triggerFlash(reason: WorkspaceAttentionFlashReason) {
         _ = reason
-        guard NotificationPaneFlashSettings.isEnabled() else { return }
-        focusFlashToken += 1
     }
 
     func attachTextView(_ textView: NSTextView) {

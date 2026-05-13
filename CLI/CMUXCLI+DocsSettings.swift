@@ -1,8 +1,7 @@
 import Foundation
 
 extension CMUXCLI {
-    static let settingsDocsURL = "https://cmux.com/docs/configuration#cmux-json"
-    static let settingsSchemaURL = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json"
+    static let settingsDocsURL = "docs/cli-contract.md"
     static let primarySettingsDisplayPath = "~/.config/cmux/cmux.json"
     static let legacySettingsDisplayPath = "~/.config/cmux/settings.json"
     static let fallbackSettingsDisplayPath = "~/Library/Application Support/com.cmuxterm.app/settings.json"
@@ -28,10 +27,7 @@ extension CMUXCLI {
             aliases: ["configuration", "config", "cmux-json", "settings-json", "settingsjson", "schema"],
             summary: "cmux-owned settings, cmux.json locations, schema, and reload flow.",
             webURL: settingsDocsURL,
-            rawResources: [
-                DocsResource(label: "settings schema", url: settingsSchemaURL),
-                DocsResource(label: "cmux skill", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills/cmux/SKILL.md"),
-            ],
+            rawResources: [],
             commands: [
                 "cmux settings path",
                 "cmux settings cmux-json",
@@ -43,10 +39,8 @@ extension CMUXCLI {
             topic: "shortcuts",
             aliases: ["keyboard", "keybindings", "keys"],
             summary: "cmux-owned keyboard shortcuts and two-step chord syntax.",
-            webURL: "https://cmux.com/docs/keyboard-shortcuts",
+            webURL: "docs/cli-contract.md",
             rawResources: [
-                DocsResource(label: "shortcut data", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux-shortcuts.ts"),
-                DocsResource(label: "settings schema", url: settingsSchemaURL),
             ],
             commands: [
                 "cmux shortcuts",
@@ -58,11 +52,8 @@ extension CMUXCLI {
             topic: "api",
             aliases: ["cli", "socket", "automation", "handles"],
             summary: "CLI/socket API, handle model, windows, workspaces, panes, and surfaces.",
-            webURL: "https://cmux.com/docs/api",
-            rawResources: [
-                DocsResource(label: "CLI contract", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/docs/cli-contract.md"),
-                DocsResource(label: "cmux skill", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills/cmux/SKILL.md"),
-            ],
+            webURL: "docs/cli-contract.md",
+            rawResources: [],
             commands: [
                 "cmux identify --json",
                 "cmux tree --all",
@@ -72,43 +63,19 @@ extension CMUXCLI {
             topic: "browser",
             aliases: ["browser-automation", "webview"],
             summary: "Browser panel automation commands and snapshot-driven web interaction.",
-            webURL: "https://cmux.com/docs/browser-automation",
-            rawResources: [
-                DocsResource(label: "browser skill", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills/cmux-browser/SKILL.md"),
-                DocsResource(label: "browser commands", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills/cmux-browser/references/commands.md"),
-            ],
+            webURL: "docs/browser-automation-surface-spec.md",
+            rawResources: [],
             commands: [
                 "cmux browser --help",
                 "cmux browser snapshot",
             ]
         ),
         DocsReference(
-            topic: "agents",
-            aliases: ["integrations", "agent-integrations"],
-            summary: "Agent hook integrations, Feed approvals, notifications, and session restore.",
-            webURL: "https://cmux.com/docs/agent-integrations/oh-my-codex",
-            rawResources: [
-                DocsResource(label: "agent hook docs", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/docs/agent-hooks.md"),
-                DocsResource(label: "feed docs", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/docs/feed.md"),
-                DocsResource(label: "notifications docs", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/docs/notifications.md"),
-            ],
-            commands: [
-                "cmux hooks setup",
-                "cmux hooks setup <agent>",
-                "cmux hooks hermes-agent install",
-                "cmux hooks hermes-agent uninstall",
-                "cmux hooks <agent> uninstall",
-            ]
-        ),
-        DocsReference(
             topic: "dock",
             aliases: ["doc", "controls", "right-sidebar", "dock-json"],
             summary: "Custom right-sidebar terminal controls from .cmux/dock.json or ~/.config/cmux/dock.json.",
-            webURL: "https://cmux.com/docs/dock",
-            rawResources: [
-                DocsResource(label: "dock docs", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/docs/dock.md"),
-                DocsResource(label: "dock web copy", url: "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/messages/en.json"),
-            ],
+            webURL: "docs/dock.md",
+            rawResources: [],
             commands: [
                 "cmux docs dock",
                 "cmux docs dock --json",
@@ -137,7 +104,7 @@ extension CMUXCLI {
         }
 
         guard args.count == 1 else {
-            throw CLIError(message: "Usage: cmux docs [settings|shortcuts|api|browser|agents|dock]")
+            throw CLIError(message: "Usage: cmux docs [settings|shortcuts|api|browser|dock]")
         }
 
         if topic == "list" || topic == "all" {
@@ -162,16 +129,15 @@ extension CMUXCLI {
 
     func docsUsage() -> String {
         return """
-        Usage: cmux docs [settings|shortcuts|api|browser|agents|dock]
+        Usage: cmux docs [settings|shortcuts|api|browser|dock]
 
-        Print the canonical docs URL, raw GitHub resources, and useful commands for a cmux topic.
+        Print the local docs path and useful commands for a cmux topic.
         This command does not require a running cmux app or socket.
 
-        Agents:
+        Notes:
           Use `cmux docs settings` before editing ~/.config/cmux/cmux.json.
           Use `cmux docs dock` before creating or editing .cmux/dock.json.
           Back up any existing cmux.json file to a timestamped .bak copy before editing so the user can revert.
-          Fetch raw resources with the printed curl commands when you need the latest schema.
         """
     }
 
@@ -187,7 +153,7 @@ extension CMUXCLI {
             "topic": reference.topic,
             "aliases": reference.aliases,
             "summary": reference.summary,
-            "web_url": reference.webURL,
+            "local_doc": reference.webURL,
             "raw_resources": reference.rawResources.map { resource in
                 [
                     "label": resource.label,
@@ -222,13 +188,13 @@ extension CMUXCLI {
             print("  \(reference.topic.padding(toLength: 10, withPad: " ", startingAt: 0)) \(reference.summary)")
         }
         print()
-        print("Run `cmux docs <topic>` for URLs, raw resources, and next commands.")
+        print("Run `cmux docs <topic>` for local docs and next commands.")
     }
 
     private func printDocsReference(_ reference: DocsReference) {
         print("\(reference.topic): \(reference.summary)")
         print()
-        print("Web:")
+        print("Local docs:")
         print("  \(reference.webURL)")
         if !reference.rawResources.isEmpty {
             print()

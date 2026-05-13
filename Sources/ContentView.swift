@@ -1046,7 +1046,6 @@ func titlebarShortcutHintShouldShow(
 }
 
 struct ContentView: View {
-    @ObservedObject var updateViewModel: UpdateViewModel
     let windowId: UUID
     @EnvironmentObject var tabManager: TabManager
     @EnvironmentObject var notificationStore: TerminalNotificationStore
@@ -1068,7 +1067,6 @@ struct ContentView: View {
     @State private var observedWindow: NSWindow?
     @StateObject private var fullscreenControlsViewModel = TitlebarControlsViewModel()
     @StateObject private var fileExplorerStore = FileExplorerStore()
-    @StateObject private var sessionIndexStore = SessionIndexStore()
     @StateObject private var selectedWorkspaceDirectoryObserver = SelectedWorkspaceDirectoryObserver()
     @State private var backgroundWorkspacePrimeCoordinator = BackgroundWorkspacePrimeCoordinator()
     @State private var fileExplorerWidth: CGFloat = 220
@@ -1121,7 +1119,6 @@ struct ContentView: View {
     @State private var commandPalettePendingActivation: CommandPalettePendingActivation?
     @State private var commandPaletteResultsRevision: UInt64 = 0
     @State private var commandPaletteUsageHistoryByCommandId: [String: CommandPaletteUsageEntry] = [:]
-    @State private var isFeedbackComposerPresented = false
     @AppStorage(CommandPaletteRenameSelectionSettings.selectAllOnFocusKey)
     private var commandPaletteRenameSelectAllOnFocus = CommandPaletteRenameSelectionSettings.defaultSelectAllOnFocus
     @AppStorage(CommandPaletteSwitcherSearchSettings.searchAllSurfacesKey)
@@ -1327,68 +1324,8 @@ struct ContentView: View {
             cachedSnapshot: workspace.tmuxLayoutSnapshot,
             liveSnapshot: workspace.bonsplitController.layoutSnapshot()
         )
-        let contentView = window.contentView
-
-        let unreadRects: [CGRect]
-        let isWorkspaceManuallyUnread = notificationStore.hasManualUnread(forTabId: workspace.id)
-        let workspaceManualUnreadPanelId = workspace.representativePanelIdForWorkspaceManualUnread()
-        if let layoutSnapshot, let contentView {
-            unreadRects = layoutSnapshot.panes.compactMap { pane in
-                guard let selectedTabId = pane.selectedTabId,
-                      let tabUUID = UUID(uuidString: selectedTabId),
-                      let panelId = workspace.panelIdFromSurfaceId(TabID(uuid: tabUUID)),
-                      let panel = workspace.panels[panelId] else {
-                    return nil
-                }
-
-                let shouldShowUnread = Workspace.shouldShowUnreadIndicator(
-                    hasUnreadNotification: notificationStore.hasVisibleNotificationIndicator(
-                        forTabId: workspace.id,
-                        surfaceId: panelId
-                    ),
-                    isManuallyUnread: workspace.manualUnreadPanelIds.contains(panelId),
-                    isWorkspaceManuallyUnread: isWorkspaceManuallyUnread,
-                    isWorkspaceManualUnreadRepresentative: workspaceManualUnreadPanelId == panelId
-                )
-                guard shouldShowUnread else { return nil }
-
-                let paneRect = WorkspaceContentView.tmuxWorkspacePaneWindowOverlayRect(
-                    layoutSnapshot: layoutSnapshot,
-                    paneId: workspace.paneId(forPanelId: panelId)
-                )
-                let exactRect = Self.tmuxWorkspacePaneExactRect(for: panel, in: contentView)
-                return Self.preferredTmuxWorkspacePaneWindowOverlayRect(
-                    exactRect: exactRect,
-                    paneRect: paneRect
-                )
-            }
-        } else {
-            unreadRects = WorkspaceContentView.tmuxWorkspacePaneWindowUnreadRects(
-                workspace: workspace,
-                notificationStore: notificationStore,
-                layoutSnapshot: layoutSnapshot
-            )
-        }
-
-        let flashRect: CGRect?
-        if let panelId = workspace.tmuxWorkspaceFlashPanelId,
-           let panel = workspace.panels[panelId],
-           let contentView {
-            let paneRect = WorkspaceContentView.tmuxWorkspacePaneWindowOverlayRect(
-                layoutSnapshot: layoutSnapshot,
-                paneId: workspace.paneId(forPanelId: panelId)
-            )
-            let exactRect = Self.tmuxWorkspacePaneExactRect(for: panel, in: contentView)
-            flashRect = Self.preferredTmuxWorkspacePaneWindowOverlayRect(
-                exactRect: exactRect,
-                paneRect: paneRect
-            )
-        } else {
-            flashRect = WorkspaceContentView.tmuxWorkspacePaneWindowOverlayRect(
-                layoutSnapshot: layoutSnapshot,
-                paneId: workspace.tmuxWorkspaceFlashPanelId.flatMap { workspace.paneId(forPanelId: $0) }
-            )
-        }
+        let unreadRects: [CGRect] = []
+        let flashRect: CGRect? = nil
 
         if unreadRects.isEmpty, flashRect == nil {
             return TmuxWorkspacePaneOverlayRenderState(
@@ -1471,7 +1408,6 @@ struct ContentView: View {
         static let panelShouldPin = "panel.shouldPin"
         static let panelHasUnread = "panel.hasUnread"
         static let panelCanMoveToNewWorkspace = "panel.canMoveToNewWorkspace"
-        static let updateHasAvailable = "update.hasAvailable"
         static let cliInstalledInPATH = "cli.installedInPATH"
         static let browserDisabled = "browser.disabled"
         static let supportedFileRoutingDisabled = "filePreview.supportedFileRoutingDisabled"
@@ -1983,9 +1919,7 @@ struct ContentView: View {
 
     private var sidebarView: some View {
         VerticalTabsSidebar(
-            updateViewModel: updateViewModel,
             fileExplorerState: fileExplorerState,
-            onSendFeedback: presentFeedbackComposer,
             onToggleSidebar: { sidebarState.toggle() },
             onNewTab: {
                 AppDelegate.shared?.performNewWorkspaceAction(
@@ -2081,10 +2015,6 @@ struct ContentView: View {
             .allowsHitTesting(sidebarSelectionState.selection == .tabs)
             .accessibilityHidden(sidebarSelectionState.selection != .tabs)
 
-            NotificationsPage(selection: $sidebarSelectionState.selection)
-                .opacity(sidebarSelectionState.selection == .notifications ? 1 : 0)
-                .allowsHitTesting(sidebarSelectionState.selection == .notifications)
-                .accessibilityHidden(sidebarSelectionState.selection != .notifications)
         }
         .padding(.top, effectiveTitlebarPadding)
         .overlay(alignment: .top) {
@@ -2172,12 +2102,8 @@ struct ContentView: View {
         return RightSidebarPanelView(
             fileExplorerStore: fileExplorerStore,
             fileExplorerState: fileExplorerState,
-            sessionIndexStore: sessionIndexStore,
             titlebarHeight: RightSidebarChromeMetrics.titlebarHeight,
             workspaceId: tabManager.selectedTabId,
-            onResumeSession: { entry in
-                resumeSession(entry: entry)
-            },
             onOpenFilePreview: { filePath in
                 openFilePreviewFromSidebar(filePath: filePath)
             },
@@ -2439,10 +2365,6 @@ struct ContentView: View {
         )
     }
 
-    private func resumeSession(entry: SessionEntry) {
-        SessionEntryResumeCoordinator.resume(entry, tabManager: tabManager)
-    }
-
     func openRightSidebarToolPane(_ mode: RightSidebarMode) {
         guard mode.canOpenAsPane,
               let workspace = tabManager.selectedWorkspace,
@@ -2469,59 +2391,18 @@ struct ContentView: View {
     private func syncFileExplorerDirectory() {
         guard let selectedId = tabManager.selectedTabId,
               let tab = tabManager.tabs.first(where: { $0.id == selectedId }) else {
-            // No selection means we have no local cwd to scope by; clear so the
-            // sessions panel doesn't keep filtering by a stale previous tab.
-            sessionIndexStore.setCurrentDirectoryIfChanged(nil)
             fileExplorerStore.applyWorkspaceRoot(.none)
             return
         }
 
         fileExplorerStore.showHiddenFiles = true
 
-        if tab.isRemoteWorkspace {
-            sessionIndexStore.setCurrentDirectoryIfChanged(nil)
-            guard let config = tab.remoteConfiguration, config.transport == .ssh else {
-                fileExplorerStore.applyWorkspaceRoot(.none)
-                return
-            }
-            let unavailableDetail = tab.remoteConnectionDetail ?? tab.remoteDaemonStatus.detail
-
-            #if DEBUG
-            let hasUnavailableDetail = unavailableDetail?.isEmpty == false
-            cmuxDebugLog(
-                "fileExplorer.sync remote state=\(tab.remoteConnectionState.rawValue) " +
-                "hasDestination=\(config.destination.isEmpty ? 0 : 1) " +
-                "hasDisplayTarget=\(config.displayTarget.isEmpty ? 0 : 1) " +
-                "hasIdentityFile=\(config.identityFile == nil ? 0 : 1) " +
-                "hasDetail=\(hasUnavailableDetail ? 1 : 0)"
-            )
-            #endif
-
-            fileExplorerStore.applyWorkspaceRoot(
-                .remoteSSH(
-                    workspaceId: tab.id,
-                    connection: SSHFileExplorerConnection(
-                        destination: config.destination,
-                        port: config.port,
-                        identityFile: config.identityFile,
-                        sshOptions: config.sshOptions
-                    ),
-                    displayTarget: config.displayTarget,
-                    isAvailable: tab.remoteConnectionState == .connected,
-                    unavailableDetail: unavailableDetail
-                )
-            )
-            return
-        }
-
         let dir = tab.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dir.isEmpty else {
-            sessionIndexStore.setCurrentDirectoryIfChanged(nil)
             fileExplorerStore.applyWorkspaceRoot(.none)
             return
         }
 
-        sessionIndexStore.setCurrentDirectoryIfChanged(dir)
         fileExplorerStore.applyWorkspaceRoot(.local(path: dir))
     }
 
@@ -2681,7 +2562,7 @@ struct ContentView: View {
 #if DEBUG
                     cmuxDebugLog("startup.recovery tabCount=\(tabManager.tabs.count) selected=\(tabManager.selectedTabId?.uuidString.prefix(8) ?? "nil") mounted=\(mountedWorkspaceIds.count)")
 #endif
-                    sentryBreadcrumb("startup.recovery", data: [
+                    diagnosticsBreadcrumb("startup.recovery", data: [
                         "tabCount": tabManager.tabs.count,
                         "selectedTabId": tabManager.selectedTabId?.uuidString ?? "nil",
                         "mountedCount": mountedWorkspaceIds.count
@@ -3049,17 +2930,6 @@ struct ContentView: View {
             _ = handleCommandPaletteRenameDeleteBackward(modifiers: [])
         })
 
-        view = AnyView(view.onReceive(NotificationCenter.default.publisher(for: .feedbackComposerRequested)) { notification in
-            let requestedWindow = notification.object as? NSWindow
-            guard Self.shouldHandleCommandPaletteRequest(
-                observedWindow: observedWindow,
-                requestedWindow: requestedWindow,
-                keyWindow: NSApp.keyWindow,
-                mainWindow: NSApp.mainWindow
-            ) else { return }
-            presentFeedbackComposer()
-        })
-
         view = AnyView(view.background(WindowAccessor(dedupeByWindow: false) { window in
             let tmuxOverlayState = tmuxWorkspacePaneWindowOverlayState(for: window)
             tmuxWorkspacePaneWindowOverlayController(for: window, createIfNeeded: tmuxOverlayState != nil)?.update(state: tmuxOverlayState)
@@ -3180,10 +3050,6 @@ struct ContentView: View {
         })
 
         view = AnyView(view.ignoresSafeArea())
-        view = AnyView(view.sheet(isPresented: $isFeedbackComposerPresented) {
-            SidebarFeedbackComposerSheet()
-        })
-
         view = AnyView(view.onDisappear {
             if isResizerDragging {
                 TerminalWindowPortalRegistry.endInteractiveGeometryResize()
@@ -3228,11 +3094,6 @@ struct ContentView: View {
             // inside WindowGlassEffect.apply.
             let backdropPlan = appearance.backdropPlan()
             removeNativeTitlebarBackdrop(in: window)
-#if DEBUG
-            if ProcessInfo.processInfo.environment["CMUX_UI_TEST_MODE"] == "1" {
-                UpdateLogStore.shared.append("ui test window accessor: id=\(windowIdentifier) visible=\(window.isVisible)")
-            }
-#endif
             let backdropResult = WindowBackdropController.apply(plan: backdropPlan, to: window)
             if backdropResult.didChangeGlassRoot {
                 let tmuxOverlayState = tmuxWorkspacePaneWindowOverlayState(for: window)
@@ -5868,9 +5729,8 @@ struct ContentView: View {
     private func commandPaletteCommandsContext(
         terminalOpenTargets: Set<TerminalDirectoryOpenTarget>
     ) -> CommandPaletteCommandsContext {
-        let cliInstalledInPATH = AppDelegate.shared?.isCmuxCLIInstalledInPATH() ?? false
         var snapshot = commandPaletteContextSnapshot(terminalOpenTargets: terminalOpenTargets)
-        snapshot.setBool(CommandPaletteContextKeys.cliInstalledInPATH, cliInstalledInPATH)
+        snapshot.setBool(CommandPaletteContextKeys.cliInstalledInPATH, false)
         return CommandPaletteCommandsContext(
             snapshot: snapshot
         )
@@ -6072,10 +5932,6 @@ struct ContentView: View {
             }
         }
 
-        if case .updateAvailable = updateViewModel.effectiveState {
-            snapshot.setBool(CommandPaletteContextKeys.updateHasAvailable, true)
-        }
-
         return snapshot
     }
 
@@ -6148,24 +6004,6 @@ struct ContentView: View {
                 title: constant(String(localized: "command.newWindow.title", defaultValue: "New Window")),
                 subtitle: constant(String(localized: "command.newWindow.subtitle", defaultValue: "Window")),
                 keywords: ["create", "new", "window"]
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.installCLI",
-                title: constant(String(localized: "command.installCLI.title", defaultValue: "Shell Command: Install 'cmux' in PATH")),
-                subtitle: constant(String(localized: "command.installCLI.subtitle", defaultValue: "CLI")),
-                keywords: ["install", "cli", "path", "shell", "command", "symlink"],
-                when: { !$0.bool(CommandPaletteContextKeys.cliInstalledInPATH) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.uninstallCLI",
-                title: constant(String(localized: "command.uninstallCLI.title", defaultValue: "Shell Command: Uninstall 'cmux' from PATH")),
-                subtitle: constant(String(localized: "command.uninstallCLI.subtitle", defaultValue: "CLI")),
-                keywords: ["uninstall", "remove", "cli", "path", "shell", "command", "symlink"],
-                when: { $0.bool(CommandPaletteContextKeys.cliInstalledInPATH) }
             )
         )
         contributions.append(
@@ -6309,36 +6147,6 @@ struct ContentView: View {
         contributions.append(contentsOf: Self.commandPaletteViewCommandContributions())
         contributions.append(
             CommandPaletteCommandContribution(
-                commandId: "palette.showNotifications",
-                title: constant(String(localized: "command.showNotifications.title", defaultValue: "Show Notifications")),
-                subtitle: constant(String(localized: "command.showNotifications.subtitle", defaultValue: "Notifications")),
-                keywords: ["notifications", "inbox"]
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.jumpUnread",
-                title: constant(String(localized: "command.jumpUnread.title", defaultValue: "Jump to Latest Unread")),
-                subtitle: constant(String(localized: "command.jumpUnread.subtitle", defaultValue: "Notifications")),
-                keywords: ["jump", "unread", "notification"]
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.markOldestUnreadAndJumpNext",
-                title: constant(
-                    String(
-                        localized: "command.markOldestUnreadAndJumpNext.title",
-                        defaultValue: "Mark as Oldest Unread and Jump to Next Latest Unread"
-                    )
-                ),
-                subtitle: constant(String(localized: "command.jumpUnread.subtitle", defaultValue: "Notifications")),
-                keywords: ["mark", "oldest", "unread", "jump", "next", "notification", "defer"],
-                when: { $0.bool(CommandPaletteContextKeys.hasWorkspace) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
                 commandId: "palette.openSettings",
                 title: constant(String(localized: "command.openSettings.title", defaultValue: "Open Settings")),
                 subtitle: constant(String(localized: "command.openSettings.subtitle", defaultValue: "Global")),
@@ -6352,31 +6160,6 @@ struct ContentView: View {
                 title: constant(String(localized: "settings.settingsJSON.openFile", defaultValue: "Open cmux.json")),
                 subtitle: constant(String(localized: "command.cmuxConfig.subtitle", defaultValue: "cmux.json")),
                 keywords: ["open", "cmux", "json", "config", "configuration", "settings", "file", "editor", "dotfile"]
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.checkForUpdates",
-                title: constant(String(localized: "command.checkForUpdates.title", defaultValue: "Check for Updates")),
-                subtitle: constant(String(localized: "command.checkForUpdates.subtitle", defaultValue: "Global")),
-                keywords: ["update", "upgrade", "release"]
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.applyUpdateIfAvailable",
-                title: constant(String(localized: "command.applyUpdateIfAvailable.title", defaultValue: "Apply Update (If Available)")),
-                subtitle: constant(String(localized: "command.applyUpdateIfAvailable.subtitle", defaultValue: "Global")),
-                keywords: ["apply", "install", "update", "available"],
-                when: { $0.bool(CommandPaletteContextKeys.updateHasAvailable) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.attemptUpdate",
-                title: constant(String(localized: "command.attemptUpdate.title", defaultValue: "Attempt Update")),
-                subtitle: constant(String(localized: "command.attemptUpdate.subtitle", defaultValue: "Global")),
-                keywords: ["attempt", "check", "update", "upgrade", "release"]
             )
         )
         contributions.append(
@@ -6575,26 +6358,6 @@ struct ContentView: View {
                 keywords: ["close", "above", "workspaces", "workspace"],
                 when: { $0.bool(CommandPaletteContextKeys.hasWorkspace) },
                 enablement: { $0.bool(CommandPaletteContextKeys.workspaceHasAbove) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.markWorkspaceRead",
-                title: constant(String(localized: "contextMenu.markWorkspaceRead", defaultValue: "Mark Workspace as Read")),
-                subtitle: workspaceSubtitle,
-                keywords: ["workspace", "read", "notification", "inbox"],
-                when: { $0.bool(CommandPaletteContextKeys.hasWorkspace) },
-                enablement: { $0.bool(CommandPaletteContextKeys.workspaceCanMarkRead) }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
-                commandId: "palette.markWorkspaceUnread",
-                title: constant(String(localized: "contextMenu.markWorkspaceUnread", defaultValue: "Mark Workspace as Unread")),
-                subtitle: workspaceSubtitle,
-                keywords: ["workspace", "unread", "notification", "inbox"],
-                when: { $0.bool(CommandPaletteContextKeys.hasWorkspace) },
-                enablement: { $0.bool(CommandPaletteContextKeys.workspaceCanMarkUnread) }
             )
         )
         appendIdentifierCopyCommandContributions(
@@ -7139,12 +6902,6 @@ struct ContentView: View {
             guard let appDelegate = AppDelegate.shared else { return }
             appDelegate.openNewMainWindow(preferredWindow: appDelegate.mainWindow(for: windowId))
         }
-        registry.register(commandId: "palette.installCLI") {
-            AppDelegate.shared?.installCmuxCLIInPath(nil)
-        }
-        registry.register(commandId: "palette.uninstallCLI") {
-            AppDelegate.shared?.uninstallCmuxCLIInPath(nil)
-        }
         registry.register(commandId: "palette.newTerminalTab") {
             if !executeConfiguredAction(id: CmuxSurfaceTabBarBuiltInAction.newTerminal.configID) {
                 tabManager.newSurface()
@@ -7210,17 +6967,6 @@ struct ContentView: View {
             workspacePresentationMode = WorkspacePresentationModeSettings.Mode.standard.rawValue
         }
         registerViewCommandHandlers(&registry)
-        registry.register(commandId: "palette.showNotifications") {
-            AppDelegate.shared?.toggleNotificationsPopover(animated: false)
-        }
-        registry.register(commandId: "palette.jumpUnread") {
-            AppDelegate.shared?.jumpToLatestUnread()
-        }
-        registry.register(commandId: "palette.markOldestUnreadAndJumpNext") {
-            AppDelegate.shared?.markFocusedNotificationAsOldestUnreadAndJumpToNextLatestUnread(
-                preferredWindow: observedWindow
-            )
-        }
         registry.register(commandId: "palette.openSettings") {
 #if DEBUG
             cmuxDebugLog("palette.openSettings.invoke")
@@ -7239,15 +6985,6 @@ struct ContentView: View {
             cmuxDebugLog("palette.openCmuxSettingsFile.invoke")
 #endif
             openCmuxSettingsFileInEditor()
-        }
-        registry.register(commandId: "palette.checkForUpdates") {
-            AppDelegate.shared?.checkForUpdates(nil)
-        }
-        registry.register(commandId: "palette.applyUpdateIfAvailable") {
-            AppDelegate.shared?.applyUpdateIfAvailable(nil)
-        }
-        registry.register(commandId: "palette.attemptUpdate") {
-            AppDelegate.shared?.attemptUpdate(nil)
         }
         registry.register(commandId: "palette.restartSocketListener") {
             AppDelegate.shared?.restartSocketListener(nil)
@@ -7340,20 +7077,6 @@ struct ContentView: View {
         }
         registry.register(commandId: "palette.closeWorkspacesAbove") {
             closeSelectedWorkspacesAbove()
-        }
-        registry.register(commandId: "palette.markWorkspaceRead") {
-            guard let workspaceId = tabManager.selectedWorkspace?.id else {
-                NSSound.beep()
-                return
-            }
-            notificationStore.markRead(forTabId: workspaceId)
-        }
-        registry.register(commandId: "palette.markWorkspaceUnread") {
-            guard let workspaceId = tabManager.selectedWorkspace?.id else {
-                NSSound.beep()
-                return
-            }
-            notificationStore.markUnread(forTabId: workspaceId)
         }
         registerIdentifierCopyCommandHandlers(&registry)
 
@@ -8036,12 +7759,6 @@ struct ContentView: View {
             "focusFlag=\(commandPaletteShouldFocusWorkspaceDescriptionEditor ? 1 : 0)"
         )
 #endif
-    }
-
-    private func presentFeedbackComposer() {
-        DispatchQueue.main.async {
-            isFeedbackComposerPresented = true
-        }
     }
 
     static func shouldHandleCommandPaletteRequest(
@@ -9087,9 +8804,7 @@ struct SidebarTabItemPresentationResolutionPolicy {
 }
 
 struct VerticalTabsSidebar: View {
-    @ObservedObject var updateViewModel: UpdateViewModel
     @ObservedObject var fileExplorerState: FileExplorerState
-    let onSendFeedback: () -> Void
     let onToggleSidebar: () -> Void
     let onNewTab: () -> Void
     @EnvironmentObject var tabManager: TabManager
@@ -9203,8 +8918,8 @@ struct VerticalTabsSidebar: View {
         })
         let orderedSelectedTabs = tabs.filter { selectedTabIds.contains($0.id) }
         let selectedContextTargetIds = orderedSelectedTabs.map(\.id)
-        let selectedRemoteContextMenuTargets = orderedSelectedTabs.filter { $0.isRemoteWorkspace }
-        let selectedRemoteContextMenuWorkspaceIds = selectedRemoteContextMenuTargets.map(\.id)
+        let selectedRemoteContextMenuTargets: [Workspace] = []
+        let selectedRemoteContextMenuWorkspaceIds: [UUID] = []
         let workspaceTerminalScrollBarHiddenById = Dictionary(
             uniqueKeysWithValues: tabs.map { ($0.id, $0.terminalScrollBarHidden) }
         )
@@ -9230,7 +8945,7 @@ struct VerticalTabsSidebar: View {
 
         ZStack(alignment: .bottomLeading) {
             workspaceScrollArea(renderContext: renderContext)
-            SidebarFooter(updateViewModel: updateViewModel, fileExplorerState: fileExplorerState, onSendFeedback: onSendFeedback)
+            SidebarFooter(fileExplorerState: fileExplorerState)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("Sidebar")
@@ -9514,18 +9229,9 @@ struct VerticalTabsSidebar: View {
         let contextMenuWorkspaceIds = usesSelectedContextMenuTargets
             ? renderContext.selectedContextTargetIds
             : [tab.id]
-        let remoteContextMenuWorkspaceIds = usesSelectedContextMenuTargets
-            ? renderContext.selectedRemoteContextMenuWorkspaceIds
-            : (tab.isRemoteWorkspace ? [tab.id] : [])
-        let allRemoteContextMenuTargetsConnecting = usesSelectedContextMenuTargets
-            ? renderContext.allSelectedRemoteContextMenuTargetsConnecting
-            : (
-                tab.isRemoteWorkspace &&
-                    (tab.remoteConnectionState == .connecting || tab.remoteConnectionState == .reconnecting)
-            )
-        let allRemoteContextMenuTargetsDisconnected = usesSelectedContextMenuTargets
-            ? renderContext.allSelectedRemoteContextMenuTargetsDisconnected
-            : (tab.isRemoteWorkspace && tab.remoteConnectionState == .disconnected)
+        let remoteContextMenuWorkspaceIds: [UUID] = []
+        let allRemoteContextMenuTargetsConnecting = false
+        let allRemoteContextMenuTargetsDisconnected = false
         let allContextMenuWorkspacesHideTerminalScrollBar = !contextMenuWorkspaceIds.isEmpty &&
             contextMenuWorkspaceIds.allSatisfy { workspaceId in
                 renderContext.workspaceTerminalScrollBarHiddenById[workspaceId] == true
@@ -9538,16 +9244,8 @@ struct VerticalTabsSidebar: View {
             in: tabManager,
             target: contextMenuPinTarget
         )
-        let liveUnreadCount = notificationStore.unreadCount(forTabId: tab.id)
-        let liveLatestNotificationText: String? = {
-            guard showsSidebarNotificationMessage,
-                  let notification = notificationStore.latestNotification(forTabId: tab.id) else {
-                return nil
-            }
-            let text = notification.body.isEmpty ? notification.title : notification.body
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }()
+        let liveUnreadCount = 0
+        let liveLatestNotificationText: String? = nil
         let liveShowsModifierShortcutHints = modifierKeyMonitor.isModifierPressed
         let livePresentation = SidebarTabItemPresentationSnapshot(
             tabId: tab.id,
@@ -9743,384 +9441,6 @@ enum DevBuildBannerDebugSettings {
             return defaultShowSidebarBanner
         }
         return defaults.bool(forKey: sidebarBannerVisibleKey)
-    }
-}
-
-private enum FeedbackComposerSettings {
-    static let storedEmailKey = "sidebarHelpFeedbackEmail"
-    static let endpointEnvironmentKey = "CMUX_FEEDBACK_API_URL"
-    static let defaultEndpoint = "https://cmux.com/api/feedback"
-    static let foundersEmail = "founders@manaflow.com"
-    static let maxMessageLength = 4_000
-    static let maxAttachmentCount = 10
-    // Keep the multipart body below Vercel's 4.5 MB request limit.
-    static let maxTotalAttachmentBytes = 4 * 1_024 * 1_024
-    static let targetTotalAttachmentUploadBytes = 3_500_000
-
-    static func endpointURL() -> URL? {
-        let env = ProcessInfo.processInfo.environment
-        if let override = env[endpointEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty {
-            return URL(string: override)
-        }
-        return URL(string: defaultEndpoint)
-    }
-}
-
-private struct FeedbackComposerAttachment: Identifiable {
-    let id = UUID()
-    let url: URL
-    let fileName: String
-    let fileSize: Int64
-    let mimeType: String
-
-    var standardizedPath: String {
-        url.standardizedFileURL.path
-    }
-
-    var displaySize: String {
-        ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
-    }
-
-    init(url: URL) throws {
-        let resourceValues = try url.resourceValues(forKeys: [
-            .contentTypeKey,
-            .fileSizeKey,
-            .isRegularFileKey,
-            .nameKey,
-        ])
-        guard resourceValues.isRegularFile != false else {
-            throw CocoaError(.fileReadUnknown)
-        }
-
-        self.url = url
-        self.fileName = resourceValues.name ?? url.lastPathComponent
-        self.fileSize = Int64(resourceValues.fileSize ?? 0)
-        self.mimeType = resourceValues.contentType?.preferredMIMEType ?? "application/octet-stream"
-    }
-}
-
-private struct PreparedFeedbackComposerAttachment {
-    let fileName: String
-    let mimeType: String
-    let data: Data
-}
-
-private struct FeedbackComposerAppMetadata {
-    let appVersion: String
-    let appBuild: String
-    let appCommit: String
-    let bundleIdentifier: String
-    let osVersion: String
-    let localeIdentifier: String
-    let hardwareModel: String
-    let chip: String
-    let memoryGB: String
-    let architecture: String
-    let displayInfo: String
-
-    static var current: FeedbackComposerAppMetadata {
-        let infoDictionary = Bundle.main.infoDictionary ?? [:]
-        let env = ProcessInfo.processInfo.environment
-        let commit = (infoDictionary["CMUXCommit"] as? String).flatMap { value in
-            value.isEmpty ? nil : value
-        } ?? env["CMUX_COMMIT"]
-
-        return FeedbackComposerAppMetadata(
-            appVersion: infoDictionary["CFBundleShortVersionString"] as? String ?? "",
-            appBuild: infoDictionary["CFBundleVersion"] as? String ?? "",
-            appCommit: commit ?? "",
-            bundleIdentifier: Bundle.main.bundleIdentifier ?? "",
-            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            localeIdentifier: Locale.preferredLanguages.first ?? Locale.current.identifier,
-            hardwareModel: sysctlString("hw.model") ?? "",
-            chip: sysctlString("machdep.cpu.brand_string") ?? "",
-            memoryGB: formatMemoryGB(),
-            architecture: currentArchitecture(),
-            displayInfo: currentDisplayInfo()
-        )
-    }
-
-    private static func sysctlString(_ name: String) -> String? {
-        var size = 0
-        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
-        var buffer = [CChar](repeating: 0, count: size)
-        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
-        return String(cString: buffer).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func formatMemoryGB() -> String {
-        let bytes = ProcessInfo.processInfo.physicalMemory
-        let gb = Double(bytes) / (1024 * 1024 * 1024)
-        return "\(Int(gb)) GB"
-    }
-
-    private static func currentArchitecture() -> String {
-        #if arch(arm64)
-        return "arm64"
-        #elseif arch(x86_64)
-        return "x86_64"
-        #else
-        return "unknown"
-        #endif
-    }
-
-    private static func currentDisplayInfo() -> String {
-        let screens = NSScreen.screens
-        let descriptions = screens.map { screen -> String in
-            let frame = screen.frame
-            let scale = screen.backingScaleFactor
-            return "\(Int(frame.width))x\(Int(frame.height)) @\(Int(scale))x"
-        }
-        let count = screens.count
-        let prefix = "\(count) display\(count == 1 ? "" : "s")"
-        return "\(prefix), \(descriptions.joined(separator: "; "))"
-    }
-}
-
-private enum FeedbackComposerSubmissionError: Error {
-    case invalidEndpoint
-    case invalidResponse
-    case rejected(statusCode: Int)
-    case attachmentReadFailed
-    case attachmentPreparationFailed
-    case transport(URLError)
-}
-
-private enum FeedbackComposerClient {
-    private static let passthroughAttachmentMIMETypes: Set<String> = [
-        "image/gif",
-        "image/heic",
-        "image/heif",
-        "image/jpeg",
-        "image/png",
-        "image/tiff",
-        "image/webp",
-    ]
-    private static let optimizedAttachmentDimensions: [Int] = [2800, 2400, 2000, 1600, 1280, 1024, 768, 640, 512]
-    private static let optimizedAttachmentQualities: [CGFloat] = [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]
-    private static let optimizedAttachmentMIMEType = "image/jpeg"
-
-    static func submit(
-        email: String,
-        message: String,
-        attachments: [FeedbackComposerAttachment]
-    ) async throws {
-        guard let endpointURL = FeedbackComposerSettings.endpointURL() else {
-            throw FeedbackComposerSubmissionError.invalidEndpoint
-        }
-
-        let metadata = FeedbackComposerAppMetadata.current
-        let boundary = "Boundary-\(UUID().uuidString)"
-        let preparedAttachments = try prepareAttachmentsForUpload(attachments)
-
-        var request = URLRequest(url: endpointURL)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 30
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        var body = Data()
-        appendField("email", value: email, to: &body, boundary: boundary)
-        appendField("message", value: message, to: &body, boundary: boundary)
-        appendField("appVersion", value: metadata.appVersion, to: &body, boundary: boundary)
-        appendField("appBuild", value: metadata.appBuild, to: &body, boundary: boundary)
-        appendField("appCommit", value: metadata.appCommit, to: &body, boundary: boundary)
-        appendField("bundleIdentifier", value: metadata.bundleIdentifier, to: &body, boundary: boundary)
-        appendField("osVersion", value: metadata.osVersion, to: &body, boundary: boundary)
-        appendField("locale", value: metadata.localeIdentifier, to: &body, boundary: boundary)
-        appendField("hardwareModel", value: metadata.hardwareModel, to: &body, boundary: boundary)
-        appendField("chip", value: metadata.chip, to: &body, boundary: boundary)
-        appendField("memoryGB", value: metadata.memoryGB, to: &body, boundary: boundary)
-        appendField("architecture", value: metadata.architecture, to: &body, boundary: boundary)
-        appendField("displayInfo", value: metadata.displayInfo, to: &body, boundary: boundary)
-
-        for attachment in preparedAttachments {
-            appendFile(
-                named: "attachments",
-                attachment: attachment,
-                to: &body,
-                boundary: boundary
-            )
-        }
-
-        body.append(Data("--\(boundary)--\r\n".utf8))
-        request.httpBody = body
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch let error as URLError {
-            throw FeedbackComposerSubmissionError.transport(error)
-        } catch {
-            throw FeedbackComposerSubmissionError.invalidResponse
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw FeedbackComposerSubmissionError.invalidResponse
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errorMessage = payload["error"] as? String,
-               errorMessage.isEmpty == false {
-                #if DEBUG
-                NSLog("feedback.submit.rejected status=%@ error=%@", String(httpResponse.statusCode), errorMessage)
-                #endif
-            }
-            throw FeedbackComposerSubmissionError.rejected(statusCode: httpResponse.statusCode)
-        }
-    }
-
-    private static func appendField(
-        _ name: String,
-        value: String,
-        to body: inout Data,
-        boundary: String
-    ) {
-        body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
-        body.append(Data(value.utf8))
-        body.append(Data("\r\n".utf8))
-    }
-
-    private static func prepareAttachmentsForUpload(
-        _ attachments: [FeedbackComposerAttachment]
-    ) throws -> [PreparedFeedbackComposerAttachment] {
-        guard attachments.isEmpty == false else { return [] }
-
-        struct IndexedAttachment {
-            let index: Int
-            let attachment: FeedbackComposerAttachment
-        }
-
-        let sortedAttachments = attachments.enumerated()
-            .map { IndexedAttachment(index: $0.offset, attachment: $0.element) }
-            .sorted { lhs, rhs in
-                lhs.attachment.fileSize > rhs.attachment.fileSize
-            }
-
-        var preparedByIndex: [Int: PreparedFeedbackComposerAttachment] = [:]
-        var remainingBudget = FeedbackComposerSettings.targetTotalAttachmentUploadBytes
-        var remainingCount = sortedAttachments.count
-
-        for item in sortedAttachments {
-            let perAttachmentBudget = max(1, remainingBudget / max(remainingCount, 1))
-            let preparedAttachment = try prepareAttachmentForUpload(
-                item.attachment,
-                maximumByteCount: perAttachmentBudget
-            )
-            preparedByIndex[item.index] = preparedAttachment
-            remainingBudget -= preparedAttachment.data.count
-            remainingCount -= 1
-        }
-
-        let preparedAttachments = attachments.indices.compactMap { preparedByIndex[$0] }
-        let totalBytes = preparedAttachments.reduce(0) { $0 + $1.data.count }
-        guard totalBytes <= FeedbackComposerSettings.targetTotalAttachmentUploadBytes else {
-            throw FeedbackComposerSubmissionError.attachmentPreparationFailed
-        }
-        return preparedAttachments
-    }
-
-    private static func prepareAttachmentForUpload(
-        _ attachment: FeedbackComposerAttachment,
-        maximumByteCount: Int
-    ) throws -> PreparedFeedbackComposerAttachment {
-        if attachment.fileSize > 0,
-           attachment.fileSize <= Int64(maximumByteCount),
-           passthroughAttachmentMIMETypes.contains(attachment.mimeType),
-           let fileData = try? Data(contentsOf: attachment.url, options: .mappedIfSafe) {
-            return PreparedFeedbackComposerAttachment(
-                fileName: attachment.fileName,
-                mimeType: attachment.mimeType,
-                data: fileData
-            )
-        }
-
-        guard let imageSource = CGImageSourceCreateWithURL(attachment.url as CFURL, nil) else {
-            throw FeedbackComposerSubmissionError.attachmentReadFailed
-        }
-
-        for maxPixelDimension in optimizedAttachmentDimensions {
-            guard let cgImage = downsampledImage(
-                from: imageSource,
-                maxPixelDimension: maxPixelDimension
-            ) else { continue }
-
-            for compressionQuality in optimizedAttachmentQualities {
-                guard let jpegData = jpegData(
-                    from: cgImage,
-                    compressionQuality: compressionQuality
-                ) else { continue }
-                guard jpegData.count <= maximumByteCount else { continue }
-
-                return PreparedFeedbackComposerAttachment(
-                    fileName: optimizedFileName(for: attachment),
-                    mimeType: optimizedAttachmentMIMEType,
-                    data: jpegData
-                )
-            }
-        }
-
-        throw FeedbackComposerSubmissionError.attachmentPreparationFailed
-    }
-
-    private static func downsampledImage(
-        from imageSource: CGImageSource,
-        maxPixelDimension: Int
-    ) -> CGImage? {
-        CGImageSourceCreateThumbnailAtIndex(
-            imageSource,
-            0,
-            [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCache: false,
-                kCGImageSourceShouldCacheImmediately: false,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixelDimension,
-            ] as CFDictionary
-        )
-    }
-
-    private static func jpegData(
-        from image: CGImage,
-        compressionQuality: CGFloat
-    ) -> Data? {
-        let bitmap = NSBitmapImageRep(cgImage: image)
-        return bitmap.representation(
-            using: .jpeg,
-            properties: [
-                .compressionFactor: compressionQuality,
-            ]
-        )
-    }
-
-    private static func optimizedFileName(
-        for attachment: FeedbackComposerAttachment
-    ) -> String {
-        let baseName = (attachment.fileName as NSString).deletingPathExtension
-        return "\(baseName.isEmpty ? "feedback-image" : baseName).jpg"
-    }
-
-    private static func appendFile(
-        named fieldName: String,
-        attachment: PreparedFeedbackComposerAttachment,
-        to body: inout Data,
-        boundary: String
-    ) {
-        let sanitizedFileName = attachment.fileName.replacingOccurrences(of: "\"", with: "")
-
-        body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(
-            Data(
-                "Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(sanitizedFileName)\"\r\n".utf8
-            )
-        )
-        body.append(Data("Content-Type: \(attachment.mimeType)\r\n\r\n".utf8))
-        body.append(attachment.data)
-        body.append(Data("\r\n".utf8))
     }
 }
 
@@ -10549,15 +9869,13 @@ final class WindowScopedShortcutHintModifierMonitor {
 }
 
 private struct SidebarFooter: View {
-    @ObservedObject var updateViewModel: UpdateViewModel
     @ObservedObject var fileExplorerState: FileExplorerState
-    let onSendFeedback: () -> Void
 
     var body: some View {
 #if DEBUG
-        SidebarDevFooter(updateViewModel: updateViewModel, fileExplorerState: fileExplorerState, onSendFeedback: onSendFeedback)
+        SidebarDevFooter(fileExplorerState: fileExplorerState)
 #else
-        SidebarFooterButtons(updateViewModel: updateViewModel, fileExplorerState: fileExplorerState, onSendFeedback: onSendFeedback)
+        SidebarFooterButtons(fileExplorerState: fileExplorerState)
             .padding(.leading, 6)
             .padding(.trailing, 10)
             .padding(.bottom, 6)
@@ -10566,254 +9884,13 @@ private struct SidebarFooter: View {
 }
 
 private struct SidebarFooterButtons: View {
-    @ObservedObject var updateViewModel: UpdateViewModel
     @ObservedObject var fileExplorerState: FileExplorerState
-    let onSendFeedback: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
-            SidebarHelpMenuButton(onSendFeedback: onSendFeedback)
-            UpdatePill(model: updateViewModel)
+            SidebarHelpMenuButton()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct FeedbackComposerMessageEditor: NSViewRepresentable {
-    @Binding var text: String
-    let placeholder: String
-    let accessibilityLabel: String
-    let accessibilityIdentifier: String
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeNSView(context: Context) -> FeedbackComposerMessageEditorView {
-        let view = FeedbackComposerMessageEditorView()
-        view.placeholder = placeholder
-        view.textView.string = text
-        view.textView.delegate = context.coordinator
-        view.textView.setAccessibilityLabel(accessibilityLabel)
-        view.textView.setAccessibilityIdentifier(accessibilityIdentifier)
-        view.setAccessibilityIdentifier(accessibilityIdentifier)
-        return view
-    }
-
-    func updateNSView(_ nsView: FeedbackComposerMessageEditorView, context: Context) {
-        if nsView.textView.string != text {
-            nsView.textView.string = text
-            nsView.refreshTextLayout()
-        }
-        nsView.placeholder = placeholder
-        nsView.textView.setAccessibilityLabel(accessibilityLabel)
-        nsView.textView.setAccessibilityIdentifier(accessibilityIdentifier)
-        nsView.setAccessibilityIdentifier(accessibilityIdentifier)
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: FeedbackComposerMessageEditor
-
-        init(parent: FeedbackComposerMessageEditor) {
-            self.parent = parent
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            parent.text = textView.string
-        }
-    }
-}
-
-private final class FeedbackComposerPassthroughLabel: NSTextField {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-final class FeedbackComposerMessageScrollView: NSScrollView {
-    weak var focusTextView: NSTextView?
-
-    override func mouseDown(with event: NSEvent) {
-        if let focusTextView {
-            _ = window?.makeFirstResponder(focusTextView)
-        }
-        super.mouseDown(with: event)
-    }
-}
-
-final class FeedbackComposerMessageEditorView: NSView {
-    private static let font = NSFont.systemFont(ofSize: 12)
-    private static let textInset = NSSize(width: 10, height: 10)
-    private static let minimumDocumentHeight: CGFloat = {
-        let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        return lineHeight + textInset.height * 2
-    }()
-
-    let scrollView = FeedbackComposerMessageScrollView()
-    let textView = NSTextView()
-    private let placeholderField = FeedbackComposerPassthroughLabel(labelWithString: "")
-
-    var placeholder: String = "" {
-        didSet {
-            placeholderField.stringValue = placeholder
-            updatePlaceholderVisibility()
-        }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-
-        wantsLayer = true
-        layer?.cornerRadius = 8
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.borderType = .noBorder
-        scrollView.drawsBackground = false
-        scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.focusTextView = textView
-
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        textView.isEditable = true
-        textView.isSelectable = true
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.backgroundColor = .clear
-        textView.drawsBackground = false
-        textView.font = Self.font
-        textView.textColor = .labelColor
-        textView.insertionPointColor = .labelColor
-        textView.textContainerInset = Self.textInset
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.heightTracksTextView = false
-        textView.minSize = NSSize(width: 0, height: Self.minimumDocumentHeight)
-        textView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-
-        scrollView.documentView = textView
-        addSubview(scrollView)
-
-        placeholderField.translatesAutoresizingMaskIntoConstraints = false
-        placeholderField.font = Self.font
-        placeholderField.textColor = .secondaryLabelColor
-        placeholderField.lineBreakMode = .byWordWrapping
-        placeholderField.maximumNumberOfLines = 0
-        scrollView.contentView.addSubview(placeholderField)
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(textDidChange(_:)),
-            name: NSText.didChangeNotification,
-            object: textView
-        )
-
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-
-            placeholderField.topAnchor.constraint(
-                equalTo: scrollView.contentView.topAnchor,
-                constant: Self.textInset.height
-            ),
-            placeholderField.leadingAnchor.constraint(
-                equalTo: scrollView.contentView.leadingAnchor,
-                constant: Self.textInset.width
-            ),
-            placeholderField.trailingAnchor.constraint(
-                lessThanOrEqualTo: scrollView.contentView.trailingAnchor,
-                constant: -Self.textInset.width
-            ),
-        ])
-
-        updatePlaceholderVisibility()
-    }
-
-    override func layout() {
-        super.layout()
-        syncTextViewFrameToContentSize()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    @objc
-    private func textDidChange(_ notification: Notification) {
-        refreshTextLayout(scrollSelection: true)
-    }
-
-    private func updatePlaceholderVisibility() {
-        placeholderField.isHidden = textView.string.isEmpty == false
-    }
-
-    func refreshTextLayout(scrollSelection: Bool = false) {
-        updatePlaceholderVisibility()
-        needsLayout = true
-        layoutSubtreeIfNeeded()
-        syncTextViewFrameToContentSize()
-        if scrollSelection {
-            textView.scrollRangeToVisible(textView.selectedRange())
-        }
-    }
-
-    private func naturalDocumentHeight(for width: CGFloat) -> CGFloat {
-        guard let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else {
-            return Self.minimumDocumentHeight
-        }
-
-        let textWidth = max(width - Self.textInset.width * 2, 1)
-        textContainer.containerSize = NSSize(
-            width: textWidth,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        layoutManager.ensureLayout(for: textContainer)
-        let usedRect = layoutManager.usedRect(for: textContainer)
-        let extraLineHeight: CGFloat
-        if layoutManager.extraLineFragmentTextContainer === textContainer {
-            extraLineHeight = ceil(layoutManager.extraLineFragmentRect.height)
-        } else {
-            extraLineHeight = 0
-        }
-        let lineHeight = ceil(Self.font.ascender - Self.font.descender + Self.font.leading)
-        let contentHeight = max(lineHeight, ceil(usedRect.height) + extraLineHeight)
-        return max(
-            Self.minimumDocumentHeight,
-            ceil(contentHeight + Self.textInset.height * 2)
-        )
-    }
-
-    private func syncTextViewFrameToContentSize() {
-        let contentSize = scrollView.contentSize
-        guard contentSize.width > 0, contentSize.height > 0 else { return }
-
-        textView.minSize = NSSize(width: 0, height: contentSize.height)
-        let naturalHeight = naturalDocumentHeight(for: contentSize.width)
-        let targetSize = NSSize(
-            width: contentSize.width,
-            height: max(naturalHeight, contentSize.height)
-        )
-        if textView.frame.size != targetSize {
-            textView.frame = NSRect(origin: .zero, size: targetSize)
-        }
     }
 }
 
@@ -10821,532 +9898,20 @@ private enum SidebarHelpMenuAction {
     case importBrowserData
     case keyboardShortcuts
     case docs
-    case changelog
     case github
     case githubIssues
-    case discord
-    case checkForUpdates
-    case sendFeedback
     case welcome
 }
 
-private struct SidebarFeedbackComposerSheet: View {
-    private static let formMaxHeight: CGFloat = 560
-
-    @AppStorage(FeedbackComposerSettings.storedEmailKey) private var email = ""
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var message = ""
-    @State private var attachments: [FeedbackComposerAttachment] = []
-    @State private var isSubmitting = false
-    @State private var submissionErrorMessage: String?
-    @State private var didSend = false
-
-    private var trimmedMessage: String {
-        message.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canSubmit: Bool {
-        isValidEmail(email) &&
-            !trimmedMessage.isEmpty &&
-            message.count <= FeedbackComposerSettings.maxMessageLength &&
-            !isSubmitting &&
-            !didSend
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(String(localized: "sidebar.help.feedback.title", defaultValue: "Send Feedback"))
-                .font(.title3.weight(.semibold))
-
-            if didSend {
-                successView
-            } else {
-                ScrollView {
-                    formView
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 4)
-                }
-                .frame(maxHeight: Self.formMaxHeight)
-            }
-        }
-        .padding(20)
-        .frame(width: 520)
-        .accessibilityIdentifier("SidebarFeedbackDialog")
-    }
-
-    private var successView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(String(localized: "sidebar.help.feedback.successTitle", defaultValue: "Thanks for the feedback."))
-                .font(.headline)
-            Text(
-                String(
-                    localized: "sidebar.help.feedback.successBody",
-                    defaultValue: "You can also reach us at founders@manaflow.com."
-                )
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-
-            HStack {
-                Spacer()
-                Button(String(localized: "sidebar.help.feedback.done", defaultValue: "Done")) {
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-    }
-
-    private var formView: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(
-                String(
-                    localized: "sidebar.help.feedback.note",
-                    defaultValue: "A human will read this! You can also reach us at founders@manaflow.com."
-                )
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(String(localized: "sidebar.help.feedback.email", defaultValue: "Your Email"))
-                    .font(.system(size: 12, weight: .medium))
-                TextField(
-                    String(localized: "sidebar.help.feedback.emailPlaceholder", defaultValue: "you@example.com"),
-                    text: $email
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(String(localized: "sidebar.help.feedback.email", defaultValue: "Your Email"))
-                .accessibilityIdentifier("SidebarFeedbackEmailField")
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(String(localized: "sidebar.help.feedback.message", defaultValue: "Message"))
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer(minLength: 0)
-                    Text("\(message.count)/\(FeedbackComposerSettings.maxMessageLength)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(
-                            message.count > FeedbackComposerSettings.maxMessageLength
-                                ? Color.red
-                                : Color.secondary
-                        )
-                }
-
-                FeedbackComposerMessageEditor(
-                    text: $message,
-                    placeholder: String(
-                        localized: "sidebar.help.feedback.messagePlaceholder",
-                        defaultValue: "Share feedback, feature requests, or issues."
-                    ),
-                    accessibilityLabel: String(localized: "sidebar.help.feedback.message", defaultValue: "Message"),
-                    accessibilityIdentifier: "SidebarFeedbackMessageEditor"
-                )
-                .frame(minHeight: 180)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    Button {
-                        chooseAttachments()
-                    } label: {
-                        Label(
-                            String(localized: "sidebar.help.feedback.attachImages", defaultValue: "Attach Images"),
-                            systemImage: "paperclip"
-                        )
-                    }
-                    .accessibilityIdentifier("SidebarFeedbackAttachButton")
-
-                    Text(
-                        String(
-                            localized: "sidebar.help.feedback.attachmentsHint",
-                            defaultValue: "Up to 10 images."
-                        )
-                    )
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                }
-
-                if attachments.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(attachments) { attachment in
-                            HStack(spacing: 8) {
-                                Image(systemName: "photo")
-                                    .foregroundStyle(.secondary)
-                                Text(attachment.fileName)
-                                    .font(.system(size: 12))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer(minLength: 0)
-                                Text(attachment.displaySize)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                Button(
-                                    String(localized: "sidebar.help.feedback.removeAttachment", defaultValue: "Remove")
-                                ) {
-                                    removeAttachment(attachment)
-                                }
-                                .buttonStyle(.link)
-                            }
-                        }
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.primary.opacity(0.04))
-                    )
-                }
-            }
-
-            if let submissionErrorMessage, submissionErrorMessage.isEmpty == false {
-                Text(submissionErrorMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-            }
-
-            HStack {
-                Spacer()
-                Button(String(localized: "sidebar.help.feedback.cancel", defaultValue: "Cancel")) {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button {
-                    Task { await submitFeedback() }
-                } label: {
-                    if isSubmitting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text(String(localized: "sidebar.help.feedback.send", defaultValue: "Send"))
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSubmit)
-                .accessibilityIdentifier("SidebarFeedbackSendButton")
-            }
-        }
-    }
-
-    private func chooseAttachments() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.image]
-        panel.title = String(
-            localized: "sidebar.help.feedback.attachImages.title",
-            defaultValue: "Attach Images"
-        )
-        panel.prompt = String(
-            localized: "sidebar.help.feedback.attachImages.prompt",
-            defaultValue: "Attach"
-        )
-
-        guard panel.runModal() == .OK else { return }
-
-        var updatedAttachments = attachments
-        var knownPaths = Set(updatedAttachments.map(\.standardizedPath))
-        var firstIssue: String?
-
-        for url in panel.urls {
-            let normalizedPath = url.standardizedFileURL.path
-            if knownPaths.contains(normalizedPath) {
-                continue
-            }
-            if updatedAttachments.count >= FeedbackComposerSettings.maxAttachmentCount {
-                firstIssue = String(
-                    localized: "sidebar.help.feedback.tooManyImages",
-                    defaultValue: "You can attach up to 10 images."
-                )
-                break
-            }
-
-            guard let attachment = try? FeedbackComposerAttachment(url: url) else {
-                firstIssue = String(
-                    localized: "sidebar.help.feedback.invalidImageSelection",
-                    defaultValue: "One of the selected files could not be attached."
-                )
-                continue
-            }
-            updatedAttachments.append(attachment)
-            knownPaths.insert(normalizedPath)
-        }
-
-        attachments = updatedAttachments
-        submissionErrorMessage = firstIssue
-    }
-
-    private func removeAttachment(_ attachment: FeedbackComposerAttachment) {
-        attachments.removeAll { $0.id == attachment.id }
-        submissionErrorMessage = nil
-    }
-
-    private func submitFeedback() async {
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedMessage = trimmedMessage
-
-        guard isValidEmail(trimmedEmail) else {
-            submissionErrorMessage = String(
-                localized: "sidebar.help.feedback.invalidEmail",
-                defaultValue: "Enter a valid email address."
-            )
-            return
-        }
-
-        guard normalizedMessage.isEmpty == false else {
-            submissionErrorMessage = String(
-                localized: "sidebar.help.feedback.emptyMessage",
-                defaultValue: "Enter a message before sending."
-            )
-            return
-        }
-
-        guard message.count <= FeedbackComposerSettings.maxMessageLength else {
-            submissionErrorMessage = String(
-                localized: "sidebar.help.feedback.messageTooLong",
-                defaultValue: "Your message is too long."
-            )
-            return
-        }
-
-        await MainActor.run {
-            email = trimmedEmail
-            submissionErrorMessage = nil
-            isSubmitting = true
-        }
-
-        do {
-            try await FeedbackComposerClient.submit(
-                email: trimmedEmail,
-                message: normalizedMessage,
-                attachments: attachments
-            )
-            await MainActor.run {
-                isSubmitting = false
-                didSend = true
-                attachments = []
-            }
-        } catch {
-            await MainActor.run {
-                isSubmitting = false
-                submissionErrorMessage = userFacingErrorMessage(for: error)
-            }
-        }
-    }
-
-    private func isValidEmail(_ rawValue: String) -> Bool {
-        let email = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard email.isEmpty == false else { return false }
-        let pattern = #"^[A-Z0-9a-z._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        return NSPredicate(format: "SELF MATCHES %@", pattern).evaluate(with: email)
-    }
-
-    private func userFacingErrorMessage(for error: Error) -> String {
-        guard let submissionError = error as? FeedbackComposerSubmissionError else {
-            return String(
-                localized: "sidebar.help.feedback.genericError",
-                defaultValue: "Couldn't send feedback. Please try again."
-            )
-        }
-
-        switch submissionError {
-        case .invalidEndpoint:
-            return String(
-                localized: "sidebar.help.feedback.endpointError",
-                defaultValue: "Feedback is unavailable right now. Email founders@manaflow.com instead."
-            )
-        case .invalidResponse:
-            return String(
-                localized: "sidebar.help.feedback.genericError",
-                defaultValue: "Couldn't send feedback. Please try again."
-            )
-        case .attachmentReadFailed:
-            return String(
-                localized: "sidebar.help.feedback.invalidImageSelection",
-                defaultValue: "One of the selected files could not be attached."
-            )
-        case .attachmentPreparationFailed:
-            return String(
-                localized: "sidebar.help.feedback.totalImagesTooLarge",
-                defaultValue: "These images are too large to send together. Remove a few and try again."
-            )
-        case .transport(let transportError):
-            if transportError.code == .notConnectedToInternet || transportError.code == .networkConnectionLost {
-                return String(
-                    localized: "sidebar.help.feedback.connectionError",
-                    defaultValue: "Couldn't send feedback. Check your connection and try again."
-                )
-            }
-            return String(
-                localized: "sidebar.help.feedback.genericError",
-                defaultValue: "Couldn't send feedback. Please try again."
-            )
-        case .rejected(let statusCode):
-            switch statusCode {
-            case 400, 413, 415:
-                return String(
-                    localized: "sidebar.help.feedback.validationError",
-                    defaultValue: "Check your message and attachments, then try again."
-                )
-            case 429:
-                return String(
-                    localized: "sidebar.help.feedback.rateLimited",
-                    defaultValue: "Too many feedback attempts. Please try again later."
-                )
-            case 500...599:
-                return String(
-                    localized: "sidebar.help.feedback.endpointError",
-                    defaultValue: "Feedback is unavailable right now. Email founders@manaflow.com instead."
-                )
-            default:
-                return String(
-                    localized: "sidebar.help.feedback.genericError",
-                    defaultValue: "Couldn't send feedback. Please try again."
-                )
-            }
-        }
-    }
-}
-
-enum FeedbackComposerBridgeError: LocalizedError {
-    case invalidEmail
-    case emptyMessage
-    case messageTooLong
-    case tooManyImages
-    case invalidImagePath(String)
-    case submissionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidEmail:
-            return "Enter a valid email address."
-        case .emptyMessage:
-            return "Enter a message before sending."
-        case .messageTooLong:
-            return "Your message is too long."
-        case .tooManyImages:
-            return "You can attach up to 10 images."
-        case .invalidImagePath(let path):
-            return "Could not attach image: \(path)"
-        case .submissionFailed(let message):
-            return message
-        }
-    }
-}
-
-enum FeedbackComposerBridge {
-    static func openComposer(in window: NSWindow? = NSApp.keyWindow ?? NSApp.mainWindow) {
-        NotificationCenter.default.post(name: .feedbackComposerRequested, object: window)
-    }
-
-    static func submit(
-        email: String,
-        message: String,
-        imagePaths: [String]
-    ) async throws -> Int {
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard isValidEmail(trimmedEmail) else {
-            throw FeedbackComposerBridgeError.invalidEmail
-        }
-        guard normalizedMessage.isEmpty == false else {
-            throw FeedbackComposerBridgeError.emptyMessage
-        }
-        guard message.count <= FeedbackComposerSettings.maxMessageLength else {
-            throw FeedbackComposerBridgeError.messageTooLong
-        }
-        guard imagePaths.count <= FeedbackComposerSettings.maxAttachmentCount else {
-            throw FeedbackComposerBridgeError.tooManyImages
-        }
-
-        let attachments = try imagePaths.map { rawPath in
-            let resolvedURL = URL(fileURLWithPath: rawPath).standardizedFileURL
-            do {
-                return try FeedbackComposerAttachment(url: resolvedURL)
-            } catch {
-                throw FeedbackComposerBridgeError.invalidImagePath(resolvedURL.path)
-            }
-        }
-
-        do {
-            try await FeedbackComposerClient.submit(
-                email: trimmedEmail,
-                message: normalizedMessage,
-                attachments: attachments
-            )
-        } catch {
-            throw FeedbackComposerBridgeError.submissionFailed(userFacingMessage(for: error))
-        }
-
-        UserDefaults.standard.set(trimmedEmail, forKey: FeedbackComposerSettings.storedEmailKey)
-        return attachments.count
-    }
-
-    private static func isValidEmail(_ rawValue: String) -> Bool {
-        let email = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard email.isEmpty == false else { return false }
-        let pattern = #"^[A-Z0-9a-z._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        return NSPredicate(format: "SELF MATCHES %@", pattern).evaluate(with: email)
-    }
-
-    private static func userFacingMessage(for error: Error) -> String {
-        guard let submissionError = error as? FeedbackComposerSubmissionError else {
-            return "Couldn't send feedback. Please try again."
-        }
-
-        switch submissionError {
-        case .invalidEndpoint:
-            return "Feedback is unavailable right now. Email founders@manaflow.com instead."
-        case .invalidResponse:
-            return "Couldn't send feedback. Please try again."
-        case .attachmentReadFailed:
-            return "One of the selected files could not be attached."
-        case .attachmentPreparationFailed:
-            return "These images are too large to send together. Remove a few and try again."
-        case .transport(let transportError):
-            if transportError.code == .notConnectedToInternet || transportError.code == .networkConnectionLost {
-                return "Couldn't send feedback. Check your connection and try again."
-            }
-            return "Couldn't send feedback. Please try again."
-        case .rejected(let statusCode):
-            switch statusCode {
-            case 400, 413, 415:
-                return "Check your message and attachments, then try again."
-            case 429:
-                return "Too many feedback attempts. Please try again later."
-            case 500...599:
-                return "Feedback is unavailable right now. Email founders@manaflow.com instead."
-            default:
-                return "Couldn't send feedback. Please try again."
-            }
-        }
-    }
-}
-
 private struct SidebarHelpMenuButton: View {
-    private let docsURL = URL(string: "https://cmux.com/docs")
-    private let changelogURL = URL(string: "https://cmux.com/docs/changelog")
-    private let githubURL = URL(string: "https://github.com/manaflow-ai/cmux")
-    private let githubIssuesURL = URL(string: "https://github.com/manaflow-ai/cmux/issues")
-    private let discordURL = URL(string: "https://discord.gg/xsgFEVrWCZ")
+    private let docsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")
+    private let githubURL = URL(string: "https://github.com/aflekkas/taskmux")
+    private let githubIssuesURL = URL(string: "https://github.com/aflekkas/taskmux/issues")
     private let helpTitle = String(localized: "sidebar.help.button", defaultValue: "Help")
     private let buttonSize: CGFloat = 22
     private let iconSize: CGFloat = 11
-    @ObservedObject private var keyboardShortcutSettingsObserver = KeyboardShortcutSettingsObserver.shared
-
-    let onSendFeedback: () -> Void
 
     @State private var isPopoverPresented = false
-
-    private var sendFeedbackShortcutHint: String {
-        let _ = keyboardShortcutSettingsObserver.revision
-        return KeyboardShortcutSettings.shortcut(for: .sendFeedback).displayString
-    }
 
     var body: some View {
         Button {
@@ -11382,14 +9947,6 @@ private struct SidebarHelpMenuButton: View {
                 isExternalLink: false
             )
             helpOptionButton(
-                title: String(localized: "sidebar.help.sendFeedback", defaultValue: "Send Feedback"),
-                action: .sendFeedback,
-                accessibilityIdentifier: "SidebarHelpMenuOptionSendFeedback",
-                isExternalLink: false,
-                shortcutHint: sendFeedbackShortcutHint,
-                trailingSystemImage: "bubble.left.and.text.bubble.right"
-            )
-            helpOptionButton(
                 title: String(localized: "settings.section.keyboardShortcuts", defaultValue: "Keyboard Shortcuts"),
                 action: .keyboardShortcuts,
                 accessibilityIdentifier: "SidebarHelpMenuOptionKeyboardShortcuts",
@@ -11409,14 +9966,6 @@ private struct SidebarHelpMenuButton: View {
                     isExternalLink: true
                 )
             }
-            if changelogURL != nil {
-                helpOptionButton(
-                    title: String(localized: "sidebar.help.changelog", defaultValue: "Changelog"),
-                    action: .changelog,
-                    accessibilityIdentifier: "SidebarHelpMenuOptionChangelog",
-                    isExternalLink: true
-                )
-            }
             if githubURL != nil {
                 helpOptionButton(
                     title: String(localized: "about.github", defaultValue: "GitHub"),
@@ -11433,20 +9982,6 @@ private struct SidebarHelpMenuButton: View {
                     isExternalLink: true
                 )
             }
-            if discordURL != nil {
-                helpOptionButton(
-                    title: String(localized: "sidebar.help.discord", defaultValue: "Discord"),
-                    action: .discord,
-                    accessibilityIdentifier: "SidebarHelpMenuOptionDiscord",
-                    isExternalLink: true
-                )
-            }
-            helpOptionButton(
-                title: String(localized: "command.checkForUpdates.title", defaultValue: "Check for Updates"),
-                action: .checkForUpdates,
-                accessibilityIdentifier: "SidebarHelpMenuOptionCheckForUpdates",
-                isExternalLink: false
-            )
         }
         .padding(8)
         .frame(minWidth: 200)
@@ -11527,25 +10062,12 @@ private struct SidebarHelpMenuButton: View {
         case .docs:
             guard let docsURL else { return }
             NSWorkspace.shared.open(docsURL)
-        case .changelog:
-            guard let changelogURL else { return }
-            NSWorkspace.shared.open(changelogURL)
         case .github:
             guard let githubURL else { return }
             NSWorkspace.shared.open(githubURL)
         case .githubIssues:
             guard let githubIssuesURL else { return }
             NSWorkspace.shared.open(githubIssuesURL)
-        case .discord:
-            guard let discordURL else { return }
-            NSWorkspace.shared.open(discordURL)
-        case .checkForUpdates:
-            Task { @MainActor in
-                AppDelegate.shared?.checkForUpdates(nil)
-            }
-        case .sendFeedback:
-            isPopoverPresented = false
-            onSendFeedback()
         case .welcome:
             isPopoverPresented = false
             Task { @MainActor in
@@ -11740,15 +10262,13 @@ private struct SidebarFooterIconButtonStyleBody: View {
 
 #if DEBUG
 private struct SidebarDevFooter: View {
-    @ObservedObject var updateViewModel: UpdateViewModel
     @ObservedObject var fileExplorerState: FileExplorerState
-    let onSendFeedback: () -> Void
     @AppStorage(DevBuildBannerDebugSettings.sidebarBannerVisibleKey)
     private var showSidebarDevBuildBanner = DevBuildBannerDebugSettings.defaultShowSidebarBanner
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SidebarFooterButtons(updateViewModel: updateViewModel, fileExplorerState: fileExplorerState, onSendFeedback: onSendFeedback)
+            SidebarFooterButtons(fileExplorerState: fileExplorerState)
             if showSidebarDevBuildBanner {
                 Text(String(localized: "debug.devBuildBanner.title", defaultValue: "THIS IS A DEV BUILD"))
                     .font(.system(size: 11, weight: .semibold))
@@ -12251,27 +10771,7 @@ private struct TabItemView: View, Equatable {
 
     @ViewBuilder
     private var remoteWorkspaceSection: some View {
-        let workspaceSnapshot = self.workspaceSnapshot
-        if !settings.hidesAllDetails, sidebarShowSSH, let remoteWorkspaceSidebarText = workspaceSnapshot.remoteWorkspaceSidebarText {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(remoteWorkspaceSidebarText)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(activeSecondaryColor(0.8))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer(minLength: 0)
-
-                    Text(workspaceSnapshot.remoteConnectionStatusText)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(activeSecondaryColor(0.58))
-                        .lineLimit(1)
-                }
-            }
-            .padding(.top, latestNotificationText == nil ? 1 : 2)
-            .safeHelp(workspaceSnapshot.remoteStateHelpText)
-        }
+        EmptyView()
     }
 
     private func copyWorkspaceIdsToPasteboard(_ ids: [UUID], includeRefs: Bool = false) {
@@ -12763,14 +11263,6 @@ private struct TabItemView: View, Equatable {
         let isMulti = targetIds.count > 1
         let tabColorPalette = WorkspaceTabColorSettings.palette()
         let shouldPin = contextMenuPinState?.pinned ?? !tab.isPinned
-        let reconnectLabel = contextMenuLabel(
-            multi: String(localized: "contextMenu.reconnectWorkspaces", defaultValue: "Reconnect Workspaces"),
-            single: String(localized: "contextMenu.reconnectWorkspace", defaultValue: "Reconnect Workspace"),
-            isMulti: isMulti)
-        let disconnectLabel = contextMenuLabel(
-            multi: String(localized: "contextMenu.disconnectWorkspaces", defaultValue: "Disconnect Workspaces"),
-            single: String(localized: "contextMenu.disconnectWorkspace", defaultValue: "Disconnect Workspace"),
-            isMulti: isMulti)
         let pinLabel = shouldPin
             ? contextMenuLabel(
                 multi: String(localized: "contextMenu.pinWorkspaces", defaultValue: "Pin Workspaces"),
@@ -12783,18 +11275,6 @@ private struct TabItemView: View, Equatable {
         let closeLabel = contextMenuLabel(
             multi: String(localized: "contextMenu.closeWorkspaces", defaultValue: "Close Workspaces"),
             single: String(localized: "contextMenu.closeWorkspace", defaultValue: "Close Workspace"),
-            isMulti: isMulti)
-        let markReadLabel = contextMenuLabel(
-            multi: String(localized: "contextMenu.markWorkspacesRead", defaultValue: "Mark Workspaces as Read"),
-            single: String(localized: "contextMenu.markWorkspaceRead", defaultValue: "Mark Workspace as Read"),
-            isMulti: isMulti)
-        let markUnreadLabel = contextMenuLabel(
-            multi: String(localized: "contextMenu.markWorkspacesUnread", defaultValue: "Mark Workspaces as Unread"),
-            single: String(localized: "contextMenu.markWorkspaceUnread", defaultValue: "Mark Workspace as Unread"),
-            isMulti: isMulti)
-        let clearLatestNotificationLabel = contextMenuLabel(
-            multi: String(localized: "contextMenu.clearLatestNotifications", defaultValue: "Clear Latest Notifications"),
-            single: String(localized: "contextMenu.clearLatestNotification", defaultValue: "Clear Latest Notification"),
             isMulti: isMulti)
         let copyWorkspaceIDLabel = contextMenuLabel(
             multi: String(localized: "contextMenu.copyWorkspaceIDs", defaultValue: "Copy Workspace IDs"),
@@ -12857,24 +11337,6 @@ private struct TabItemView: View, Equatable {
 
         }
 
-        if !remoteContextMenuWorkspaceIds.isEmpty {
-            Divider()
-
-            Button(reconnectLabel) {
-                for workspace in remoteContextMenuWorkspaces() {
-                    workspace.reconnectRemoteConnection()
-                }
-            }
-            .disabled(allRemoteContextMenuTargetsConnecting)
-
-            Button(disconnectLabel) {
-                for workspace in remoteContextMenuWorkspaces() {
-                    workspace.disconnectRemoteConnection(clearConfiguration: false)
-                }
-            }
-            .disabled(allRemoteContextMenuTargetsDisconnected)
-        }
-
         Menu(String(localized: "contextMenu.workspaceSettings", defaultValue: "Workspace Settings")) {
             Button {
                 toggleWorkspaceTerminalScrollBarHidden(targetIds: targetIds)
@@ -12918,12 +11380,6 @@ private struct TabItemView: View, Equatable {
                         Image(nsImage: coloredCircleImage(color: tabColorSwatchColor(for: entry.hex)))
                     }
                 }
-            }
-        }
-
-        if let copyableSidebarSSHError = workspaceSnapshot.copyableSidebarSSHError {
-            Button(String(localized: "contextMenu.copySshError", defaultValue: "Copy SSH Error")) {
-                WorkspaceSurfaceIdentifierClipboardText.copy(copyableSidebarSSHError)
             }
         }
 
@@ -12998,23 +11454,6 @@ private struct TabItemView: View, Equatable {
             closeTabsAbove(tabId: tab.id)
         }
         .disabled(index == 0)
-
-        Divider()
-
-        Button(markReadLabel) {
-            markTabsRead(targetIds)
-        }
-        .disabled(!notificationStore.canMarkWorkspaceRead(forTabIds: targetIds))
-
-        Button(markUnreadLabel) {
-            markTabsUnread(targetIds)
-        }
-        .disabled(!notificationStore.canMarkWorkspaceUnread(forTabIds: targetIds))
-
-        Button(clearLatestNotificationLabel) {
-            clearLatestNotifications(targetIds)
-        }
-        .disabled(!hasLatestNotifications(in: targetIds))
 
         Divider()
 

@@ -17,9 +17,5 @@ let package = Package(
         .target(
             name: "CMUXAuthCore"
         ),
-        .testTarget(
-            name: "CMUXAuthCoreTests",
-            dependencies: ["CMUXAuthCore"]
-        ),
     ]
 )

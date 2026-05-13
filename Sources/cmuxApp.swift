@@ -196,11 +196,6 @@ struct cmuxApp: App {
                             AppDelegate.shared?.preferredMainWindowForSettingsPresentation()
                         }
                     )
-#if DEBUG
-                    if ProcessInfo.processInfo.environment["CMUX_UI_TEST_MODE"] == "1" {
-                        UpdateLogStore.shared.append("ui test: cmuxApp onAppear")
-                    }
-#endif
                     bootstrapMainWindowScene()
                 }
                 .onChange(of: appearanceMode) { _ in
@@ -231,74 +226,12 @@ struct cmuxApp: App {
                 Button(String(localized: "menu.app.about", defaultValue: "About cmux")) {
                     showAboutPanel()
                 }
-                Button(String(localized: "menu.app.checkForUpdates", defaultValue: "Check for Updates…")) {
-                    appDelegate.checkForUpdates(nil)
-                }
-                InstallUpdateMenuItem(model: appDelegate.updateViewModel)
             }
 
             CommandGroup(replacing: .appTermination) {
                 splitCommandButton(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux"), shortcut: menuShortcut(for: .quit)) {
                     NSApp.terminate(nil)
                 }
-            }
-
-#if DEBUG
-            CommandMenu("Update Pill") {
-                Button("Show Update Pill") {
-                    appDelegate.showUpdatePill(nil)
-                }
-                Button("Show Long Nightly Pill") {
-                    appDelegate.showUpdatePillLongNightly(nil)
-                }
-                Button("Show Loading State") {
-                    appDelegate.showUpdatePillLoading(nil)
-                }
-                Button("Hide Update Pill") {
-                    appDelegate.hideUpdatePill(nil)
-                }
-                Button("Automatic Update Pill") {
-                    appDelegate.clearUpdatePillOverride(nil)
-                }
-            }
-#endif
-
-            CommandMenu(String(localized: "menu.notifications.title", defaultValue: "Notifications")) {
-                let snapshot = notificationMenuSnapshot
-
-                Button(snapshot.stateHintTitle) {}
-                    .disabled(true)
-
-                if !snapshot.recentNotifications.isEmpty {
-                    Divider()
-
-                    ForEach(snapshot.recentNotifications) { notification in
-                        Button(notificationMenuItemTitle(for: notification)) {
-                            openNotificationFromMainMenu(notification)
-                        }
-                    }
-
-                    Divider()
-                }
-
-                splitCommandButton(title: String(localized: "menu.notifications.show", defaultValue: "Show Notifications"), shortcut: menuShortcut(for: .showNotifications)) {
-                    showNotificationsPopover()
-                }
-
-                splitCommandButton(title: String(localized: "menu.notifications.jumpToUnread", defaultValue: "Jump to Latest Unread"), shortcut: menuShortcut(for: .jumpToUnread)) {
-                    appDelegate.jumpToLatestUnread()
-                }
-                .disabled(!snapshot.hasUnreadNotifications)
-
-                Button(String(localized: "menu.notifications.markAllRead", defaultValue: "Mark All Read")) {
-                    notificationStore.markAllRead()
-                }
-                .disabled(!snapshot.hasUnreadNotifications)
-
-                Button(String(localized: "menu.notifications.clearAll", defaultValue: "Clear All")) {
-                    notificationStore.clearAll()
-                }
-                .disabled(!snapshot.hasNotifications)
             }
 
 #if DEBUG
@@ -350,25 +283,6 @@ struct cmuxApp: App {
                     }
                     Button("Debug Window Controls…") {
                         DebugWindowControlsWindowController.shared.show()
-                    }
-                    Button("Feed Preview…") {
-                        FeedPreviewWindowController.shared.show()
-                    }
-                    Button(
-                        String(
-                            localized: "debug.menu.feedTextEditorDebug",
-                            defaultValue: "Feed Text Editor Lab…"
-                        )
-                    ) {
-                        FeedTextEditorDebugWindowController.shared.show()
-                    }
-                    Button(
-                        String(
-                            localized: "debug.menu.feedButtonStyleDebug",
-                            defaultValue: "Feed Button Style Debug…"
-                        )
-                    ) {
-                        FeedButtonStyleDebugWindowController.shared.show()
                     }
                     Button(
                         String(
@@ -457,18 +371,10 @@ struct cmuxApp: App {
 
                 Divider()
 
-                Button(String(localized: "menu.updateLogs.copyUpdateLogs", defaultValue: "Copy Update Logs")) {
-                    appDelegate.copyUpdateLogs(nil)
-                }
-                Button(String(localized: "menu.updateLogs.copyFocusLogs", defaultValue: "Copy Focus Logs")) {
+                Button(String(localized: "menu.debugLogs.copyFocusLogs", defaultValue: "Copy Focus Logs")) {
                     appDelegate.copyFocusLogs(nil)
                 }
 
-                Divider()
-
-                Button("Trigger Sentry Test Crash") {
-                    appDelegate.triggerSentryTestCrash(nil)
-                }
             }
 #endif
 
@@ -788,15 +694,6 @@ struct cmuxApp: App {
                 }
             }
 
-            Divider()
-
-            splitCommandButton(title: String(localized: "menu.view.jumpToUnread", defaultValue: "Jump to Latest Unread"), shortcut: menuShortcut(for: .jumpToUnread)) {
-                AppDelegate.shared?.jumpToLatestUnread()
-            }
-
-            splitCommandButton(title: String(localized: "menu.view.showNotifications", defaultValue: "Show Notifications"), shortcut: menuShortcut(for: .showNotifications)) {
-                showNotificationsPopover()
-            }
         }
     }
 
@@ -1120,9 +1017,6 @@ struct cmuxApp: App {
         StartupAppearanceDebugWindowController.shared.show()
         MenuBarExtraDebugWindowController.shared.show()
         PDFPreviewChromeDebugWindowController.shared.show()
-        FeedPreviewWindowController.shared.show()
-        FeedTextEditorDebugWindowController.shared.show()
-        FeedButtonStyleDebugWindowController.shared.show()
         BonsplitTabBarDebugWindowController.shared.show()
     }
 #endif
@@ -1151,9 +1045,6 @@ private let cmuxAuxiliaryWindowIdentifiers: Set<String> = [
     "cmux.browser-popup",
     "cmux.browserProfilePopoverDebug",
     "cmux.configEditor",
-    "cmux.feedButtonStyleDebug",
-    "cmux.feedPreview",
-    "cmux.feedTextEditorDebug",
     "cmux.fileExplorerStyleDebug",
     "cmux.folderDragIcon",
     "cmux.pdfPreviewChromeDebug",
@@ -1781,14 +1672,6 @@ private struct DebugWindowControlsView: View {
                         ) {
                             TabBarBackdropLabWindowController.shared.show()
                         }
-                        Button(
-                            String(
-                                localized: "debug.menu.feedTextEditorDebug",
-                                defaultValue: "Feed Text Editor Lab…"
-                            )
-                        ) {
-                            FeedTextEditorDebugWindowController.shared.show()
-                        }
                         Button("Open All Debug Windows") {
                             DebugWindowControlsWindowController.shared.show()
                             BrowserImportHintDebugWindowController.shared.show()
@@ -1801,7 +1684,6 @@ private struct DebugWindowControlsView: View {
                             MenuBarExtraDebugWindowController.shared.show()
                             PDFPreviewChromeDebugWindowController.shared.show()
                             TabBarBackdropLabWindowController.shared.show()
-                            FeedTextEditorDebugWindowController.shared.show()
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2541,8 +2423,8 @@ private final class SidebarDebugWindowController: NSWindowController, NSWindowDe
 private struct AboutPanelView: View {
     @Environment(\.openURL) private var openURL
 
-    private let githubURL = URL(string: "https://github.com/manaflow-ai/cmux")
-    private let docsURL = URL(string: "https://cmux.com/docs")
+    private let githubURL = URL(string: "https://github.com/aflekkas/taskmux")
+    private let docsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")
 
     private var version: String? { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String }
     private var build: String? { Bundle.main.infoDictionary?["CFBundleVersion"] as? String }
@@ -2586,7 +2468,7 @@ private struct AboutPanelView: View {
                     }
                     let commitText = commit ?? "—"
                     let commitURL = commit.flatMap { hash in
-                        URL(string: "https://github.com/manaflow-ai/cmux/commit/\(hash)")
+                        URL(string: "https://github.com/aflekkas/taskmux/commit/\(hash)")
                     }
                     AboutPropertyRow(label: String(localized: "about.commit", defaultValue: "Commit"), text: commitText, url: commitURL)
                 }
@@ -4649,64 +4531,38 @@ enum CommandPaletteSwitcherSearchSettings {
 
 enum ClaudeCodeIntegrationSettings {
     static let hooksEnabledKey = "claudeCodeHooksEnabled"
-    static let defaultHooksEnabled = true
+    static let defaultHooksEnabled = false
     static let customClaudePathKey = "claudeCodeCustomClaudePath"
 
     static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: hooksEnabledKey) == nil {
-            return defaultHooksEnabled
-        }
-        return defaults.bool(forKey: hooksEnabledKey)
+        false
     }
 
     static func customClaudePath(defaults: UserDefaults = .standard) -> String? {
-        let value = defaults.string(forKey: customClaudePathKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? nil : value
+        nil
     }
 }
 
 enum CursorIntegrationSettings {
     static let hooksEnabledKey = "cursorHooksEnabled"
-    static let defaultHooksEnabled = true
+    static let defaultHooksEnabled = false
 
     static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: hooksEnabledKey) == nil {
-            return defaultHooksEnabled
-        }
-        return defaults.bool(forKey: hooksEnabledKey)
+        false
     }
 }
 
 enum GeminiIntegrationSettings {
     static let hooksEnabledKey = "geminiHooksEnabled"
-    static let defaultHooksEnabled = true
+    static let defaultHooksEnabled = false
 
     static func hooksEnabled(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: hooksEnabledKey) == nil {
-            return defaultHooksEnabled
-        }
-        return defaults.bool(forKey: hooksEnabledKey)
+        false
     }
 }
 
 enum WelcomeSettings {
     static let shownKey = "cmuxWelcomeShown"
-}
-
-enum TelemetrySettings {
-    static let sendAnonymousTelemetryKey = "sendAnonymousTelemetry"
-    static let defaultSendAnonymousTelemetry = true
-
-    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: sendAnonymousTelemetryKey) == nil {
-            return defaultSendAnonymousTelemetry
-        }
-        return defaults.bool(forKey: sendAnonymousTelemetryKey)
-    }
-
-    // Freeze telemetry enablement once per launch. Settings changes apply on next restart.
-    static let enabledForCurrentLaunch = isEnabled()
 }
 
 enum CmdClickMarkdownRouteSettings {
@@ -4970,8 +4826,8 @@ func openCmuxSettingsFileInEditor() {
 struct SettingsView: View {
     private let pickerColumnWidth: CGFloat = 196
     private let notificationSoundControlWidth: CGFloat = 280
-    private let shortcutChordsDocsURL = URL(string: "https://cmux.com/docs/keyboard-shortcuts#shortcut-chords")!
-    private let settingsJSONDocsURL = URL(string: "https://cmux.com/docs/configuration#cmux-json")!
+    private let shortcutChordsDocsURL = URL(string: "https://github.com/aflekkas/taskmux/tree/main/docs")!
+    private let settingsJSONDocsURL = URL(string: "https://github.com/aflekkas/taskmux/blob/main/docs/cli-contract.md")!
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("selectedSettingsSection") private var selectedSettingsSectionRaw = SettingsNavigationTarget.account.rawValue
     @State private var highlightedSearchAnchorID: String?
@@ -4993,8 +4849,6 @@ struct SettingsView: View {
     private var cursorHooksEnabled = CursorIntegrationSettings.defaultHooksEnabled
     @AppStorage(GeminiIntegrationSettings.hooksEnabledKey)
     private var geminiHooksEnabled = GeminiIntegrationSettings.defaultHooksEnabled
-    @AppStorage(TelemetrySettings.sendAnonymousTelemetryKey)
-    private var sendAnonymousTelemetry = TelemetrySettings.defaultSendAnonymousTelemetry
     @AppStorage(PreferredEditorSettings.key) private var preferredEditorCommand = ""
     @AppStorage(CmdClickSupportedFileRouteSettings.key)
     private var openSupportedFilesInCmux = CmdClickSupportedFileRouteSettings.defaultValue
@@ -5042,8 +4896,6 @@ struct SettingsView: View {
     private var showTerminalScrollBar = TerminalScrollBarSettings.defaultShowScrollBar
     @AppStorage(FileDropBehaviorSettings.defaultBehaviorKey)
     private var fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
-    @AppStorage(AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
-    private var autoResumeAgentSessions = AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions
     @AppStorage(WorkspaceAutoReorderSettings.key) private var workspaceAutoReorder = WorkspaceAutoReorderSettings.defaultValue
     @AppStorage(IMessageModeSettings.key) private var iMessageMode = IMessageModeSettings.defaultValue
     @AppStorage(SidebarWorkspaceDetailSettings.hideAllDetailsKey)
@@ -5094,7 +4946,6 @@ struct SettingsView: View {
     @State private var notificationCustomSoundStatusIsError = false
     @State private var showNotificationCustomSoundErrorAlert = false
     @State private var notificationCustomSoundErrorAlertMessage = ""
-    @State private var telemetryValueAtLaunch = TelemetrySettings.enabledForCurrentLaunch
     @State private var showLanguageRestartAlert = false
     @State private var isResettingSettings = false
     @State private var workspaceTabPaletteEntries = WorkspaceTabColorSettings.palette()
@@ -5190,17 +5041,6 @@ struct SettingsView: View {
             get: { selectedFileDropDefaultBehavior.rawValue },
             set: { newValue in
                 fileDropDefaultBehavior = FileDropBehaviorSettings.behavior(for: newValue).rawValue
-            }
-        )
-    }
-
-    private var autoResumeAgentSessionsBinding: Binding<Bool> {
-        Binding(
-            get: { autoResumeAgentSessions },
-            set: { newValue in
-                guard autoResumeAgentSessions != newValue else { return }
-                autoResumeAgentSessions = newValue
-                AgentSessionAutoResumeSettings.notifyDidChange()
             }
         )
     }
@@ -5924,45 +5764,6 @@ struct SettingsView: View {
                         SettingsCardDivider()
 
                         SettingsCardRow(
-                            configurationReview: .json("app.iMessageMode"),
-                            String(localized: "settings.app.iMessageMode", defaultValue: "iMessage Mode"),
-                            subtitle: String(localized: "settings.app.iMessageMode.subtitle", defaultValue: "Move a workspace to the top and show the submitted message when you send an agent prompt.")
-                        ) {
-                            Toggle("", isOn: $iMessageMode)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityLabel(
-                                    String(localized: "settings.app.iMessageMode", defaultValue: "iMessage Mode")
-                                )
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("app.reorderOnNotification"),
-                            String(localized: "settings.app.reorderOnNotification", defaultValue: "Reorder on Notification"),
-                            subtitle: String(localized: "settings.app.reorderOnNotification.subtitle", defaultValue: "Move workspaces to the top when they receive a notification. Disable for stable shortcut positions.")
-                        ) {
-                            Toggle("", isOn: $workspaceAutoReorder)
-                                .labelsHidden()
-                                .controlSize(.small)
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("notifications.dockBadge"),
-                            String(localized: "settings.app.dockBadge", defaultValue: "Dock Badge"),
-                            subtitle: String(localized: "settings.app.dockBadge.subtitle", defaultValue: "Show unread count on app icon (Dock and Cmd+Tab).")
-                        ) {
-                            Toggle("", isOn: $notificationDockBadgeEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
                             configurationReview: .json("app.menuBarOnly"),
                             String(localized: "settings.app.menuBarOnly", defaultValue: "Menu Bar Only"),
                             subtitle: String(localized: "settings.app.menuBarOnly.subtitle", defaultValue: "Hide the Dock icon and Cmd+Tab entry. Use the menu bar item to show cmux.")
@@ -5981,7 +5782,7 @@ struct SettingsView: View {
                         SettingsCardRow(
                             configurationReview: .json("notifications.showInMenuBar"),
                             String(localized: "settings.app.showInMenuBar", defaultValue: "Show in Menu Bar"),
-                            subtitle: String(localized: "settings.app.showInMenuBar.subtitle", defaultValue: "Keep cmux in the menu bar for unread notifications and quick actions.")
+                            subtitle: String(localized: "settings.app.showInMenuBar.subtitle", defaultValue: "Keep cmux in the menu bar for quick actions.")
                         ) {
                             Toggle("", isOn: showMenuBarExtraBinding)
                                 .labelsHidden()
@@ -5991,157 +5792,6 @@ struct SettingsView: View {
                                 )
                         }
                         .disabled(menuBarOnly)
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("notifications.unreadPaneRing"),
-                            String(localized: "settings.notifications.paneRing.title", defaultValue: "Unread Pane Ring"),
-                            subtitle: String(localized: "settings.notifications.paneRing.subtitle", defaultValue: "Show a blue ring around panes with unread notifications.")
-                        ) {
-                            Toggle("", isOn: $notificationPaneRingEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityLabel(
-                                    String(localized: "settings.notifications.paneRing.title", defaultValue: "Unread Pane Ring")
-                                )
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("notifications.paneFlash"),
-                            String(localized: "settings.notifications.paneFlash.title", defaultValue: "Pane Flash"),
-                            subtitle: String(localized: "settings.notifications.paneFlash.subtitle", defaultValue: "Briefly flash a blue outline when cmux highlights a pane.")
-                        ) {
-                            Toggle("", isOn: $notificationPaneFlashEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityLabel(
-                                    String(localized: "settings.notifications.paneFlash.title", defaultValue: "Pane Flash")
-                                )
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .action,
-                            String(localized: "settings.notifications.desktop", defaultValue: "Desktop Notifications"),
-                            subtitle: notificationPermissionSubtitle,
-                            searchAnchorID: SettingsSearchIndex.settingID(for: .app, idSuffix: "desktop-notifications")
-                        ) {
-                            HStack(spacing: 6) {
-                                Text(notificationPermissionStatusText)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(notificationPermissionStatusColor)
-                                    .frame(width: 98, alignment: .trailing)
-
-                                Button(notificationPermissionActionTitle) {
-                                    handleNotificationPermissionAction()
-                                }
-                                .controlSize(.small)
-
-                                Button("Send Test") {
-                                    notificationStore.sendSettingsTestNotification()
-                                }
-                                .controlSize(.small)
-                            }
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("notifications.sound", "notifications.customSoundFilePath"),
-                            String(localized: "settings.notifications.sound.title", defaultValue: "Notification Sound"),
-                            subtitle: String(localized: "settings.notifications.sound.subtitle", defaultValue: "Sound played when a notification arrives."),
-                            controlWidth: notificationSoundControlWidth
-                        ) {
-                            VStack(alignment: .trailing, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    Picker("", selection: $notificationSound) {
-                                        ForEach(NotificationSoundSettings.systemSounds, id: \.value) { sound in
-                                            Text(sound.label).tag(sound.value)
-                                        }
-                                    }
-                                    .labelsHidden()
-                                    Button {
-                                        previewNotificationSound()
-                                    } label: {
-                                        Image(systemName: "play.fill")
-                                            .font(.system(size: 9))
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .disabled(!canPreviewNotificationSound)
-                                }
-
-                                if notificationSound == NotificationSoundSettings.customFileValue {
-                                    HStack(spacing: 6) {
-                                        Text(notificationSoundCustomFileDisplayName)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                            .frame(width: 170, alignment: .trailing)
-                                        Button(
-                                            String(
-                                                localized: "settings.notifications.sound.custom.choose.button",
-                                                defaultValue: "Choose..."
-                                            )
-                                        ) {
-                                            chooseNotificationSoundFile()
-                                        }
-                                        .controlSize(.small)
-                                        Button(
-                                            String(
-                                                localized: "settings.notifications.sound.custom.clear.button",
-                                                defaultValue: "Clear"
-                                            )
-                                        ) {
-                                            notificationSoundCustomFilePath = NotificationSoundSettings.defaultCustomFilePath
-                                            refreshNotificationCustomSoundStatus()
-                                        }
-                                        .controlSize(.small)
-                                        .disabled(!hasCustomNotificationSoundFilePath)
-                                    }
-                                    if let notificationCustomSoundStatusMessage {
-                                        Text(notificationCustomSoundStatusMessage)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(notificationCustomSoundStatusIsError ? Color.red : Color.secondary)
-                                            .lineLimit(2)
-                                            .multilineTextAlignment(.trailing)
-                                            .frame(width: 260, alignment: .trailing)
-                                    }
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("notifications.command"),
-                            String(localized: "settings.notifications.command", defaultValue: "Notification Command"),
-                            subtitle: String(localized: "settings.notifications.command.subtitle", defaultValue: "Run a shell command when a notification arrives. $CMUX_NOTIFICATION_TITLE, $CMUX_NOTIFICATION_SUBTITLE, $CMUX_NOTIFICATION_BODY are set.")
-                        ) {
-                            TextField(String(localized: "settings.notifications.command.placeholder", defaultValue: "say \"done\""), text: $notificationCustomCommand)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 200)
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("app.sendAnonymousTelemetry"),
-                            String(localized: "settings.app.telemetry", defaultValue: "Send anonymous telemetry"),
-                            subtitle: sendAnonymousTelemetry != telemetryValueAtLaunch
-                                ? String(localized: "settings.app.telemetry.subtitleChanged", defaultValue: "Change takes effect on next launch.")
-                                : String(localized: "settings.app.telemetry.subtitle", defaultValue: "Share anonymized crash and usage data to help improve cmux.")
-                        ) {
-                            Toggle("", isOn: $sendAnonymousTelemetry)
-                                .labelsHidden()
-                                .controlSize(.small)
-                        }
 
                         SettingsCardDivider()
 
@@ -6224,23 +5874,6 @@ struct SettingsView: View {
                                 )
                         }
 
-                        SettingsCardDivider()
-
-                        SettingsCardRow(
-                            configurationReview: .json("terminal.autoResumeAgentSessions"),
-                            String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen"),
-                            subtitle: autoResumeAgentSessions
-                                ? String(localized: "settings.terminal.agentAutoResume.subtitleOn", defaultValue: "When cmux reopens after quit, restored agent terminals automatically run their resume command.")
-                                : String(localized: "settings.terminal.agentAutoResume.subtitleOff", defaultValue: "When cmux reopens after quit, restored agent terminals stay idle until you resume them manually.")
-                        ) {
-                            Toggle("", isOn: autoResumeAgentSessionsBinding)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsTerminalAgentAutoResumeToggle")
-                                .accessibilityLabel(
-                                    String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen")
-                                )
-                        }
                     }
 
                     SettingsSectionHeader(title: String(localized: "settings.section.sidebarAppearance", defaultValue: "Sidebar"))
@@ -6495,79 +6128,7 @@ struct SettingsView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
                         }
-                        SettingsCardNote(String(localized: "settings.automation.socketOverrides.note", defaultValue: "Overrides: CMUX_SOCKET_ENABLE, CMUX_SOCKET_MODE, and CMUX_SOCKET_PATH (set CMUX_ALLOW_SOCKET_OVERRIDE=1 for stable/nightly builds)."))
-                    }
-
-                    SettingsCard {
-                        SettingsCardRow(
-                            configurationReview: .json("automation.claudeCodeIntegration"),
-                            String(localized: "settings.automation.claudeCode", defaultValue: "Claude Code Integration"),
-                            subtitle: claudeCodeHooksEnabled
-                                ? String(localized: "settings.automation.claudeCode.subtitleOn", defaultValue: "Sidebar shows Claude session status and notifications.")
-                                : String(localized: "settings.automation.claudeCode.subtitleOff", defaultValue: "Claude Code runs without cmux integration.")
-                        ) {
-                            Toggle("", isOn: $claudeCodeHooksEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsClaudeCodeHooksToggle")
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardNote(String(localized: "settings.automation.claudeCode.note", defaultValue: "When enabled, cmux wraps the claude command to inject session tracking and notification hooks. Disable if you prefer to manage Claude Code hooks yourself."))
-                    }
-
-                    SettingsCard {
-                        SettingsCardRow(
-                            configurationReview: .json("automation.claudeBinaryPath"),
-                            String(localized: "settings.automation.claudeCode.customPath", defaultValue: "Claude Binary Path"),
-                            subtitle: String(localized: "settings.automation.claudeCode.customPath.subtitle", defaultValue: "Custom path to the claude binary. Leave empty to use PATH.")
-                        ) {
-                            TextField(
-                                String(localized: "settings.automation.claudeCode.customPath.placeholder", defaultValue: "e.g. /usr/local/bin/claude"),
-                                text: $customClaudePath
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 200)
-                        }
-                    }
-
-                    SettingsCard {
-                        SettingsCardRow(
-                            configurationReview: .json("automation.cursorIntegration"),
-                            String(localized: "settings.automation.cursor", defaultValue: "Cursor Integration"),
-                            subtitle: cursorHooksEnabled
-                                ? String(localized: "settings.automation.cursor.subtitleOn", defaultValue: "Sidebar shows Cursor agent status and notifications.")
-                                : String(localized: "settings.automation.cursor.subtitleOff", defaultValue: "Cursor runs without cmux integration.")
-                        ) {
-                            Toggle("", isOn: $cursorHooksEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsCursorHooksToggle")
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardNote(String(localized: "settings.automation.cursor.note", defaultValue: "Hooks must be installed with `cmux hooks cursor install`. They no-op outside cmux terminals."))
-                    }
-
-                    SettingsCard {
-                        SettingsCardRow(
-                            configurationReview: .json("automation.geminiIntegration"),
-                            String(localized: "settings.automation.gemini", defaultValue: "Gemini CLI Integration"),
-                            subtitle: geminiHooksEnabled
-                                ? String(localized: "settings.automation.gemini.subtitleOn", defaultValue: "Sidebar shows Gemini session status and notifications.")
-                                : String(localized: "settings.automation.gemini.subtitleOff", defaultValue: "Gemini runs without cmux integration.")
-                        ) {
-                            Toggle("", isOn: $geminiHooksEnabled)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsGeminiHooksToggle")
-                        }
-
-                        SettingsCardDivider()
-
-                        SettingsCardNote(String(localized: "settings.automation.gemini.note", defaultValue: "Hooks must be installed with `cmux hooks gemini install`. They no-op outside cmux terminals."))
+                        SettingsCardNote(String(localized: "settings.automation.socketOverrides.note", defaultValue: "Overrides: CMUX_SOCKET_ENABLE, CMUX_SOCKET_MODE, and CMUX_SOCKET_PATH."))
                     }
 
                     SettingsCard {
@@ -7300,7 +6861,6 @@ struct SettingsView: View {
         customClaudePath = ""
         cursorHooksEnabled = CursorIntegrationSettings.defaultHooksEnabled
         geminiHooksEnabled = GeminiIntegrationSettings.defaultHooksEnabled
-        sendAnonymousTelemetry = TelemetrySettings.defaultSendAnonymousTelemetry
         preferredEditorCommand = ""
         CmdClickSupportedFileRouteSettings.setEnabled(CmdClickSupportedFileRouteSettings.defaultValue)
         openSupportedFilesInCmux = CmdClickSupportedFileRouteSettings.defaultValue
@@ -7352,11 +6912,6 @@ struct SettingsView: View {
             TerminalScrollBarSettings.notifyDidChange()
         }
         fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
-        let previousAutoResumeAgentSessions = autoResumeAgentSessions
-        autoResumeAgentSessions = AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions
-        if previousAutoResumeAgentSessions != autoResumeAgentSessions {
-            AgentSessionAutoResumeSettings.notifyDidChange()
-        }
         workspaceAutoReorder = WorkspaceAutoReorderSettings.defaultValue
         iMessageMode = IMessageModeSettings.defaultValue
         sidebarHideAllDetails = SidebarWorkspaceDetailSettings.defaultHideAllDetails
