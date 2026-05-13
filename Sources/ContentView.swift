@@ -8607,10 +8607,8 @@ private struct SidebarTabItemSettingsSnapshot: Equatable {
     let makesPullRequestsClickable: Bool
     let openPullRequestLinksInCmuxBrowser: Bool
     let openPortLinksInCmuxBrowser: Bool
-    let showsNotificationMessage: Bool
     let activeTabIndicatorStyle: SidebarActiveTabIndicatorStyle
     let selectionColorHex: String?
-    let notificationBadgeColorHex: String?
     let visibleAuxiliaryDetails: SidebarWorkspaceAuxiliaryDetailVisibility
     let iMessageModeEnabled: Bool
 
@@ -8638,14 +8636,6 @@ private struct SidebarTabItemSettingsSnapshot: Equatable {
             showWorkspaceDescription: showsWorkspaceDescriptionSetting,
             hideAllDetails: hidesAllDetails
         )
-        let showsNotificationMessageSetting = SidebarWorkspaceDetailSettings.showsNotificationMessage(
-            defaults: defaults
-        )
-        showsNotificationMessage = SidebarWorkspaceDetailSettings.resolvedNotificationMessageVisibility(
-            showNotificationMessage: showsNotificationMessageSetting,
-            hideAllDetails: hidesAllDetails
-        )
-
         let showsMetadata = Self.bool(defaults: defaults, key: "sidebarShowStatusPills", defaultValue: SidebarWorkspaceDetailDefaults.showCustomMetadata)
         let showsLog = Self.bool(defaults: defaults, key: "sidebarShowLog", defaultValue: SidebarWorkspaceDetailDefaults.showLog)
         let showsProgress = Self.bool(defaults: defaults, key: "sidebarShowProgress", defaultValue: SidebarWorkspaceDetailDefaults.showProgress)
@@ -8664,7 +8654,6 @@ private struct SidebarTabItemSettingsSnapshot: Equatable {
 
         activeTabIndicatorStyle = SidebarActiveTabIndicatorSettings.current(defaults: defaults)
         selectionColorHex = defaults.string(forKey: "sidebarSelectionColorHex")
-        notificationBadgeColorHex = defaults.string(forKey: "sidebarNotificationBadgeColorHex")
         iMessageModeEnabled = IMessageModeSettings.isEnabled(defaults: defaults)
     }
 
@@ -8789,10 +8778,6 @@ struct VerticalTabsSidebar: View {
 
     private var isMinimalMode: Bool {
         WorkspacePresentationModeSettings.mode(for: workspacePresentationMode) == .minimal
-    }
-
-    private var showsSidebarNotificationMessage: Bool {
-        tabItemSettingsStore.snapshot.showsNotificationMessage
     }
 
     private var workspaceNumberShortcut: StoredShortcut {
@@ -10342,10 +10327,6 @@ private struct TabItemView: View, Equatable {
         settings.selectionColorHex
     }
 
-    private var sidebarNotificationBadgeColorHex: String? {
-        settings.notificationBadgeColorHex
-    }
-
     private var openSidebarPullRequestLinksInCmuxBrowser: Bool {
         settings.openPullRequestLinksInCmuxBrowser
     }
@@ -10398,9 +10379,6 @@ private struct TabItemView: View, Equatable {
     }
 
     private var activeUnreadBadgeFillColor: Color {
-        if let hex = sidebarNotificationBadgeColorHex, let nsColor = NSColor(hex: hex) {
-            return Color(nsColor: nsColor)
-        }
         return usesInvertedActiveForeground ? Color.white.opacity(0.25) : cmuxAccentColor()
     }
 

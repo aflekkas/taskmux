@@ -86,10 +86,8 @@ enum SidebarBranchLayoutSettings {
 enum SidebarWorkspaceDetailSettings {
     static let hideAllDetailsKey = "sidebarHideAllDetails"
     static let showWorkspaceDescriptionKey = "sidebarShowWorkspaceDescription"
-    static let showNotificationMessageKey = "sidebarShowNotificationMessage"
     static let defaultHideAllDetails = false
     static let defaultShowWorkspaceDescription = true
-    static let defaultShowNotificationMessage = true
 
     static func hidesAllDetails(defaults: UserDefaults = .standard) -> Bool {
         if defaults.object(forKey: hideAllDetailsKey) == nil {
@@ -105,25 +103,11 @@ enum SidebarWorkspaceDetailSettings {
         return defaults.bool(forKey: showWorkspaceDescriptionKey)
     }
 
-    static func showsNotificationMessage(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: showNotificationMessageKey) == nil {
-            return defaultShowNotificationMessage
-        }
-        return defaults.bool(forKey: showNotificationMessageKey)
-    }
-
     static func resolvedWorkspaceDescriptionVisibility(
         showWorkspaceDescription: Bool,
         hideAllDetails: Bool
     ) -> Bool {
         showWorkspaceDescription && !hideAllDetails
-    }
-
-    static func resolvedNotificationMessageVisibility(
-        showNotificationMessage: Bool,
-        hideAllDetails: Bool
-    ) -> Bool {
-        showNotificationMessage && !hideAllDetails
     }
 }
 
