@@ -352,6 +352,7 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var logEntries: [SessionLogEntrySnapshot]
     var progress: SessionProgressSnapshot?
     var gitBranch: SessionGitBranchSnapshot?
+    var gitContext: WorkspaceGitContext?
     var remote: SessionRemoteWorkspaceSnapshot?
 }
 

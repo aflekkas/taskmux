@@ -2,6 +2,125 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "contextMenu.gitContext": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Git Context" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Git Context" } }
+      }
+    },
+    "contextMenu.gitContext.attachWorktree": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Attach Existing Worktree…" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Attach Existing Worktree…" } }
+      }
+    },
+    "contextMenu.gitContext.clear": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Clear Git Context" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Clear Git Context" } }
+      }
+    },
+    "contextMenu.gitContext.createWorktree": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Create Task Worktree" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Create Task Worktree" } }
+      }
+    },
+    "contextMenu.gitContext.launchCodex": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Launch Codex Here" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Launch Codex Here" } }
+      }
+    },
+    "gitContext.attachPanel.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Choose an existing git checkout or worktree to bind to this workspace." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Choose an existing git checkout or worktree to bind to this workspace." } }
+      }
+    },
+    "gitContext.attachPanel.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Attach Git Worktree" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Attach Git Worktree" } }
+      }
+    },
+    "gitContext.display.detached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "detached" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "detached" } }
+      }
+    },
+    "gitContext.display.git": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "git" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "git" } }
+      }
+    },
+    "gitContext.error.branchAlreadyCheckedOut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Branch %@ is already checked out at %@." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Branch %@ is already checked out at %@." } }
+      }
+    },
+    "gitContext.error.commandFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ failed: %@" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ failed: %@" } }
+      }
+    },
+    "gitContext.error.noFocusedPane": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No focused pane is available." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "No focused pane is available." } }
+      }
+    },
+    "gitContext.error.notGitRepository": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No git repository was found at %@." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "No git repository was found at %@." } }
+      }
+    },
+    "gitContext.error.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Git Context Failed" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Git Context Failed" } }
+      }
+    },
+    "gitContext.error.worktreePathUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Taskmux could not choose a managed worktree path." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Taskmux could not choose a managed worktree path." } }
+      }
+    },
+    "sidebar.gitContext.help.attached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Attached git worktree" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Attached git worktree" } }
+      }
+    },
+    "sidebar.gitContext.help.managed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Managed Taskmux worktree" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Managed Taskmux worktree" } }
+      }
+    },
     "cli.error.dismissNotificationSelector": {
       "extractionState": "manual",
       "localizations": {

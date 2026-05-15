@@ -7253,6 +7253,39 @@ class TabManager: ObservableObject {
 }
 
 extension TabManager {
+    func applyGitContext(_ context: WorkspaceGitContext, toWorkspaceId workspaceId: UUID) -> Bool {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return false }
+        workspace.applyGitContext(context)
+        if let focusedPanelId = workspace.focusedPanelId {
+            scheduleInitialWorkspaceGitMetadataRefreshIfPossible(
+                workspaceId: workspace.id,
+                panelId: focusedPanelId,
+                reason: "gitContextApply"
+            )
+        }
+        return true
+    }
+
+    @discardableResult
+    func clearGitContext(workspaceId: UUID) -> Bool {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return false }
+        workspace.clearGitContext()
+        return true
+    }
+
+    @discardableResult
+    func launchCodexInGitContext(workspaceId: UUID) -> TerminalPanel? {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return nil }
+        let directory = workspace.workspaceGitContextDirectory() ?? workspace.currentDirectory
+        return workspace.newTerminalSurfaceInFocusedPane(
+            focus: true,
+            workingDirectory: directory,
+            initialCommand: "codex"
+        )
+    }
+}
+
+extension TabManager {
     func sessionAutosaveFingerprint(
         restorableAgentIndex: RestorableAgentSessionIndex = .empty
     ) -> Int {
@@ -7278,6 +7311,7 @@ extension TabManager {
             hasher.combine(workspace.panelPullRequests.count)
             hasher.combine(workspace.panelGitBranches.count)
             hasher.combine(workspace.surfaceListeningPorts.count)
+            Self.hashWorkspaceGitContext(workspace.gitContext, into: &hasher)
 
             let panelIds = workspace.panels.keys.sorted { $0.uuidString < $1.uuidString }
             hasher.combine(panelIds.count)
@@ -7309,6 +7343,28 @@ extension TabManager {
         }
 
         return hasher.finalize()
+    }
+
+    nonisolated private static func hashWorkspaceGitContext(
+        _ context: WorkspaceGitContext?,
+        into hasher: inout Hasher
+    ) {
+        guard let context else {
+            hasher.combine(false)
+            return
+        }
+        hasher.combine(true)
+        hasher.combine(context.repoRoot)
+        hasher.combine(context.worktreePath)
+        hasher.combine(context.baseRef)
+        hasher.combine(context.branch)
+        hasher.combine(context.headCommit)
+        hasher.combine(context.isDetached)
+        hasher.combine(context.isDirty)
+        hasher.combine(context.isManaged)
+        hasher.combine(context.taskTitle)
+        hasher.combine(context.taskId)
+        hasher.combine(context.externalURLString)
     }
 
     nonisolated static func restorableAgentSnapshotFingerprint(

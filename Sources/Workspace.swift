@@ -187,6 +187,7 @@ extension Workspace {
             logEntries: logSnapshots,
             progress: progressSnapshot,
             gitBranch: gitBranchSnapshot,
+            gitContext: gitContext,
             remote: remoteConfiguration?.sessionSnapshot()
         )
     }
@@ -257,6 +258,7 @@ extension Workspace {
         }
         progress = snapshot.progress.map { SidebarProgressState(value: $0.value, label: $0.label) }
         gitBranch = snapshot.gitBranch.map { SidebarGitBranchState(branch: $0.branch, isDirty: $0.isDirty) }
+        gitContext = snapshot.gitContext
 
         recomputeListeningPorts()
 
@@ -7036,6 +7038,7 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var logEntries: [SidebarLogEntry] = []
     @Published var progress: SidebarProgressState?
     @Published var gitBranch: SidebarGitBranchState?
+    @Published var gitContext: WorkspaceGitContext?
     @Published var panelGitBranches: [UUID: SidebarGitBranchState] = [:]
     @Published var pullRequest: SidebarPullRequestState?
     @Published var panelPullRequests: [UUID: SidebarPullRequestState] = [:]
@@ -7142,6 +7145,7 @@ final class Workspace: Identifiable, ObservableObject {
             sidebarObservationSignal($logEntries),
             sidebarObservationSignal($progress),
             sidebarObservationSignal($gitBranch),
+            sidebarObservationSignal($gitContext),
             sidebarObservationSignal($panelGitBranches),
             sidebarObservationSignal($pullRequest),
             sidebarObservationSignal($panelPullRequests),
@@ -8478,6 +8482,30 @@ final class Workspace: Identifiable, ObservableObject {
         return panel.isDirty
     }
 
+    func applyGitContext(_ context: WorkspaceGitContext) {
+        gitContext = context
+        let directory = context.activeDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !directory.isEmpty {
+            currentDirectory = directory
+            surfaceTabBarDirectory = directory
+        }
+        if let branch = context.branch?.trimmingCharacters(in: .whitespacesAndNewlines), !branch.isEmpty {
+            gitBranch = SidebarGitBranchState(branch: branch, isDirty: context.isDirty)
+        } else {
+            gitBranch = nil
+        }
+    }
+
+    func clearGitContext() {
+        gitContext = nil
+    }
+
+    func workspaceGitContextDirectory() -> String? {
+        guard let context = gitContext else { return nil }
+        let directory = context.activeDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return directory.isEmpty ? nil : directory
+    }
+
     func updatePanelGitBranch(panelId: UUID, branch: String, isDirty: Bool) {
         let state = SidebarGitBranchState(branch: branch, isDirty: isDirty)
         let existing = panelGitBranches[panelId]
@@ -9808,6 +9836,9 @@ final class Workspace: Identifiable, ObservableObject {
                !workingDirectory.isEmpty {
                 return workingDirectory
             }
+            if let contextDirectory = workspaceGitContextDirectory() {
+                return contextDirectory
+            }
             if let panelDirectory = panelDirectories[panelId]?.trimmingCharacters(in: .whitespacesAndNewlines),
                !panelDirectory.isEmpty {
                 return panelDirectory
@@ -9959,11 +9990,18 @@ final class Workspace: Identifiable, ObservableObject {
         }
 
         // Create new terminal panel
+        let effectiveWorkingDirectory: String? = {
+            if let trimmed = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !trimmed.isEmpty {
+                return trimmed
+            }
+            return workspaceGitContextDirectory()
+        }()
         let newPanel = TerminalPanel(
             workspaceId: id,
             context: GHOSTTY_SURFACE_CONTEXT_SPLIT,
             configTemplate: inheritedConfig,
-            workingDirectory: workingDirectory,
+            workingDirectory: effectiveWorkingDirectory,
             portOrdinal: portOrdinal,
             initialCommand: startupCommand,
             tmuxStartCommand: tmuxStartCommand,
@@ -11605,9 +11643,20 @@ final class Workspace: Identifiable, ObservableObject {
 
     /// Create a new terminal surface in the currently focused pane
     @discardableResult
-    func newTerminalSurfaceInFocusedPane(focus: Bool? = nil, initialInput: String? = nil) -> TerminalPanel? {
+    func newTerminalSurfaceInFocusedPane(
+        focus: Bool? = nil,
+        workingDirectory: String? = nil,
+        initialCommand: String? = nil,
+        initialInput: String? = nil
+    ) -> TerminalPanel? {
         guard let focusedPaneId = bonsplitController.focusedPaneId else { return nil }
-        return newTerminalSurface(inPane: focusedPaneId, focus: focus, initialInput: initialInput)
+        return newTerminalSurface(
+            inPane: focusedPaneId,
+            focus: focus,
+            workingDirectory: workingDirectory,
+            initialCommand: initialCommand,
+            initialInput: initialInput
+        )
     }
 
     @discardableResult

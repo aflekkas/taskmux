@@ -10194,6 +10194,8 @@ struct SidebarWorkspaceSnapshotBuilder {
         let metadataBlocks: [SidebarMetadataBlock]
         let latestLog: SidebarLogEntry?
         let progress: SidebarProgressState?
+        let gitContextSummaryText: String?
+        let gitContextHelpText: String?
         let compactGitBranchSummaryText: String?
         let compactBranchDirectoryRow: String?
         let branchDirectoryLines: [VerticalBranchDirectoryLine]
@@ -10613,6 +10615,20 @@ private struct TabItemView: View, Equatable {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
+            if let gitContextSummaryText = workspaceSnapshot.gitContextSummaryText {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 9))
+                        .foregroundColor(activeSecondaryColor(0.72))
+                    Text(gitContextSummaryText)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(activeSecondaryColor(0.8))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .safeHelp(workspaceSnapshot.gitContextHelpText ?? gitContextSummaryText)
+            }
+
             // Branch + directory row
             if detailVisibility.showsBranchDirectory {
                 if sidebarBranchVerticalLayout {
@@ -11029,6 +11045,28 @@ private struct TabItemView: View, Equatable {
 
         }
 
+        if !isMulti {
+            Menu(String(localized: "contextMenu.gitContext", defaultValue: "Git Context")) {
+                Button(String(localized: "contextMenu.gitContext.createWorktree", defaultValue: "Create Task Worktree")) {
+                    createGitContextFromMenu()
+                }
+                Button(String(localized: "contextMenu.gitContext.attachWorktree", defaultValue: "Attach Existing Worktree…")) {
+                    attachGitContextFromMenu()
+                }
+                Button(String(localized: "contextMenu.gitContext.launchCodex", defaultValue: "Launch Codex Here")) {
+                    launchCodexFromMenu()
+                }
+                .disabled(tab.gitContext == nil)
+                if tab.gitContext != nil {
+                    Divider()
+                    Button(String(localized: "contextMenu.gitContext.clear", defaultValue: "Clear Git Context")) {
+                        tabManager.clearGitContext(workspaceId: tab.id)
+                        refreshWorkspaceSnapshot(force: true)
+                    }
+                }
+            }
+        }
+
         Menu(String(localized: "contextMenu.workspaceSettings", defaultValue: "Workspace Settings")) {
             Button {
                 toggleWorkspaceTerminalScrollBarHidden(targetIds: targetIds)
@@ -11306,6 +11344,83 @@ private struct TabItemView: View, Equatable {
         }
     }
 
+    private func createGitContextFromMenu() {
+        let workspaceId = tab.id
+        let sourceDirectory = tab.currentDirectory
+        let workspaceTitle = tab.title
+        Task {
+            do {
+                let context = try await WorkspaceGitContextManager.createManagedContext(
+                    sourceDirectory: sourceDirectory,
+                    workspaceTitle: workspaceTitle,
+                    taskTitle: workspaceTitle
+                )
+                await MainActor.run {
+                    guard tabManager.applyGitContext(context, toWorkspaceId: workspaceId) else {
+                        showGitContextError(WorkspaceGitContextError.notGitRepository(sourceDirectory))
+                        return
+                    }
+                    refreshWorkspaceSnapshot(force: true)
+                }
+            } catch {
+                await MainActor.run {
+                    showGitContextError(error)
+                }
+            }
+        }
+    }
+
+    private func attachGitContextFromMenu() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.title = String(localized: "gitContext.attachPanel.title", defaultValue: "Attach Git Worktree")
+        panel.message = String(localized: "gitContext.attachPanel.message", defaultValue: "Choose an existing git checkout or worktree to bind to this workspace.")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let workspaceId = tab.id
+        let workspaceTitle = tab.title
+        Task {
+            do {
+                let context = try await WorkspaceGitContextManager.attachContext(
+                    directory: url.path,
+                    taskTitle: workspaceTitle
+                )
+                await MainActor.run {
+                    guard tabManager.applyGitContext(context, toWorkspaceId: workspaceId) else {
+                        showGitContextError(WorkspaceGitContextError.notGitRepository(url.path))
+                        return
+                    }
+                    refreshWorkspaceSnapshot(force: true)
+                }
+            } catch {
+                await MainActor.run {
+                    showGitContextError(error)
+                }
+            }
+        }
+    }
+
+    private func launchCodexFromMenu() {
+        guard tabManager.launchCodexInGitContext(workspaceId: tab.id) != nil else {
+            showGitContextError(WorkspaceGitContextError.commandFailed(
+                command: "codex",
+                detail: String(localized: "gitContext.error.noFocusedPane", defaultValue: "No focused pane is available.")
+            ))
+            return
+        }
+        updateSelection()
+    }
+
+    private func showGitContextError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "gitContext.error.title", defaultValue: "Git Context Failed")
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: String(localized: "alert.ok", defaultValue: "OK"))
+        alert.runModal()
+    }
+
     private var remoteStateHelpText: String {
         let target = tab.remoteDisplayTarget ?? String(
             localized: "sidebar.remote.help.targetFallback",
@@ -11411,6 +11526,8 @@ private struct TabItemView: View, Equatable {
             guard detailVisibility.showsPullRequests, let orderedPanelIds else { return [] }
             return pullRequestDisplays(orderedPanelIds: orderedPanelIds)
         }()
+        let gitContextSummary = gitContextSummaryText(tab.gitContext)
+        let gitContextHelp = gitContextHelpText(tab.gitContext)
 
         return SidebarWorkspaceSnapshotBuilder.Snapshot(
             presentationKey: workspaceSnapshotPresentationKey,
@@ -11427,6 +11544,8 @@ private struct TabItemView: View, Equatable {
             metadataBlocks: detailVisibility.showsMetadata ? tab.sidebarMetadataBlocksInDisplayOrder() : [],
             latestLog: detailVisibility.showsLog ? tab.logEntries.last : nil,
             progress: detailVisibility.showsProgress ? tab.progress : nil,
+            gitContextSummaryText: gitContextSummary,
+            gitContextHelpText: gitContextHelp,
             compactGitBranchSummaryText: compactGitBranchSummaryText,
             compactBranchDirectoryRow: compactBranchDirectoryRow,
             branchDirectoryLines: branchDirectoryLines,
@@ -11484,6 +11603,22 @@ private struct TabItemView: View, Equatable {
 
     // latestNotificationText is now passed as a parameter from the parent view
     // to avoid subscribing to notificationStore changes in every TabItemView.
+
+    private func gitContextSummaryText(_ context: WorkspaceGitContext?) -> String? {
+        guard let context else { return nil }
+        let home = SidebarPathFormatter.homeDirectoryPath
+        let directory = SidebarPathFormatter.shortenedPath(context.activeDirectory, homeDirectoryPath: home)
+        let suffix = directory.isEmpty ? "" : " · \(directory)"
+        return "\(context.displayBranch)\(suffix)"
+    }
+
+    private func gitContextHelpText(_ context: WorkspaceGitContext?) -> String? {
+        guard let context else { return nil }
+        let mode = context.isManaged
+            ? String(localized: "sidebar.gitContext.help.managed", defaultValue: "Managed Taskmux worktree")
+            : String(localized: "sidebar.gitContext.help.attached", defaultValue: "Attached git worktree")
+        return "\(mode): \(context.activeDirectory)"
+    }
 
     private func branchDirectoryRow(
         gitSummary: String?,

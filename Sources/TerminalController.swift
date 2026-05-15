@@ -2469,6 +2469,16 @@ class TerminalController {
             return v2Result(id: id, self.v2WorkspaceLast(params: params))
         case "workspace.equalize_splits":
             return v2Result(id: id, self.v2WorkspaceEqualizeSplits(params: params))
+        case "workspace.git_context.get":
+            return v2Result(id: id, self.v2WorkspaceGitContextGet(params: params))
+        case "workspace.git_context.create_worktree":
+            return self.v2WorkspaceGitContextCreateWorktree(id: id, params: params)
+        case "workspace.git_context.attach":
+            return self.v2WorkspaceGitContextAttach(id: id, params: params)
+        case "workspace.git_context.clear":
+            return v2Result(id: id, self.v2WorkspaceGitContextClear(params: params))
+        case "workspace.git_context.launch_codex":
+            return v2Result(id: id, self.v2WorkspaceGitContextLaunchCodex(params: params))
         case "session.restore_previous":
             return v2Result(id: id, self.v2SessionRestorePrevious())
 
@@ -2835,6 +2845,11 @@ class TerminalController {
             "workspace.previous",
             "workspace.last",
             "workspace.equalize_splits",
+            "workspace.git_context.get",
+            "workspace.git_context.create_worktree",
+            "workspace.git_context.attach",
+            "workspace.git_context.clear",
+            "workspace.git_context.launch_codex",
             "session.restore_previous",
             "settings.open",
             "surface.list",
@@ -4137,6 +4152,7 @@ class TerminalController {
             "listening_ports": workspace.listeningPorts,
             "remote": workspace.remoteStatusPayload(),
             "current_directory": v2OrNull(workspace.currentDirectory),
+            "git_context": workspace.gitContext?.payload() ?? NSNull(),
             "custom_color": v2OrNull(workspace.customColor)
         ]
         if let index {
@@ -4308,6 +4324,174 @@ class TerminalController {
             "workspace": wsPayload ?? NSNull()
         ])
     }
+
+    private func v2WorkspaceGitContextGet(params: [String: Any]) -> V2CallResult {
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        var payload: [String: Any]?
+        v2MainSync {
+            let requestedWorkspaceId = v2UUID(params, "workspace_id")
+            let workspace = requestedWorkspaceId.flatMap { id in tabManager.tabs.first(where: { $0.id == id }) }
+                ?? tabManager.selectedWorkspace
+            guard let workspace else { return }
+            payload = [
+                "workspace_id": workspace.id.uuidString,
+                "workspace_ref": v2Ref(kind: .workspace, uuid: workspace.id),
+                "git_context": workspace.gitContext?.payload() ?? NSNull()
+            ]
+        }
+        guard let payload else {
+            return .err(code: "not_found", message: "Workspace not found", data: nil)
+        }
+        return .ok(payload)
+    }
+
+    private func v2WorkspaceGitContextCreateWorktree(id: Any?, params: [String: Any]) -> String {
+        let requestedWorkspaceId = v2UUID(params, "workspace_id")
+        let requestedSourceDirectory = v2OptionalTrimmedRawString(params, "source_directory")
+            ?? v2OptionalTrimmedRawString(params, "directory")
+        let requestedBranch = v2OptionalTrimmedRawString(params, "branch")
+        let requestedBaseRef = v2OptionalTrimmedRawString(params, "base_ref")
+        let requestedTaskTitle = v2OptionalTrimmedRawString(params, "task_title")
+        let requestedTaskId = v2OptionalTrimmedRawString(params, "task_id")
+        let requestedExternalURL = v2OptionalTrimmedRawString(params, "external_url")
+
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return v2Result(id: id, .err(code: "unavailable", message: "TabManager not available", data: nil))
+        }
+
+        var workspaceId: UUID?
+        var workspaceTitle = ""
+        var sourceDirectory = ""
+        v2MainSync {
+            let workspace = requestedWorkspaceId.flatMap { id in tabManager.tabs.first(where: { $0.id == id }) }
+                ?? tabManager.selectedWorkspace
+            guard let workspace else { return }
+            workspaceId = workspace.id
+            workspaceTitle = requestedTaskTitle ?? workspace.title
+            sourceDirectory = requestedSourceDirectory ?? workspace.currentDirectory
+        }
+        guard let workspaceId else {
+            return v2Result(id: id, .err(code: "not_found", message: "Workspace not found", data: nil))
+        }
+        let workspaceRef = v2Ref(kind: .workspace, uuid: workspaceId)
+
+        return v2AsyncSocketCall(id: id) {
+            let context = try await WorkspaceGitContextManager.createManagedContext(
+                sourceDirectory: sourceDirectory,
+                workspaceTitle: workspaceTitle,
+                branch: requestedBranch,
+                baseRef: requestedBaseRef,
+                taskTitle: requestedTaskTitle,
+                taskId: requestedTaskId,
+                externalURLString: requestedExternalURL
+            )
+            let applied = await MainActor.run {
+                tabManager.applyGitContext(context, toWorkspaceId: workspaceId)
+            }
+            guard applied else {
+                throw WorkspaceGitContextError.notGitRepository(sourceDirectory)
+            }
+            return [
+                "workspace_id": workspaceId.uuidString,
+                "workspace_ref": workspaceRef,
+                "git_context": context.payload()
+            ]
+        }
+    }
+
+    private func v2WorkspaceGitContextAttach(id: Any?, params: [String: Any]) -> String {
+        guard let directory = v2OptionalTrimmedRawString(params, "directory")
+            ?? v2OptionalTrimmedRawString(params, "worktree_path") else {
+            return v2Result(id: id, .err(code: "invalid_params", message: "Missing directory", data: nil))
+        }
+        let requestedWorkspaceId = v2UUID(params, "workspace_id")
+        let requestedTaskTitle = v2OptionalTrimmedRawString(params, "task_title")
+        let requestedTaskId = v2OptionalTrimmedRawString(params, "task_id")
+        let requestedExternalURL = v2OptionalTrimmedRawString(params, "external_url")
+
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return v2Result(id: id, .err(code: "unavailable", message: "TabManager not available", data: nil))
+        }
+        var workspaceId: UUID?
+        v2MainSync {
+            workspaceId = requestedWorkspaceId
+                ?? tabManager.selectedWorkspace?.id
+        }
+        guard let workspaceId else {
+            return v2Result(id: id, .err(code: "not_found", message: "Workspace not found", data: nil))
+        }
+        let workspaceRef = v2Ref(kind: .workspace, uuid: workspaceId)
+
+        return v2AsyncSocketCall(id: id) {
+            let context = try await WorkspaceGitContextManager.attachContext(
+                directory: directory,
+                taskTitle: requestedTaskTitle,
+                taskId: requestedTaskId,
+                externalURLString: requestedExternalURL
+            )
+            let applied = await MainActor.run {
+                tabManager.applyGitContext(context, toWorkspaceId: workspaceId)
+            }
+            guard applied else {
+                throw WorkspaceGitContextError.notGitRepository(directory)
+            }
+            return [
+                "workspace_id": workspaceId.uuidString,
+                "workspace_ref": workspaceRef,
+                "git_context": context.payload()
+            ]
+        }
+    }
+
+    private func v2WorkspaceGitContextClear(params: [String: Any]) -> V2CallResult {
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        let requestedWorkspaceId = v2UUID(params, "workspace_id")
+        var workspaceId: UUID?
+        var cleared = false
+        v2MainSync {
+            workspaceId = requestedWorkspaceId ?? tabManager.selectedWorkspace?.id
+            if let workspaceId {
+                cleared = tabManager.clearGitContext(workspaceId: workspaceId)
+            }
+        }
+        guard let workspaceId, cleared else {
+            return .err(code: "not_found", message: "Workspace not found", data: nil)
+        }
+        return .ok([
+            "workspace_id": workspaceId.uuidString,
+            "workspace_ref": v2Ref(kind: .workspace, uuid: workspaceId),
+            "git_context": NSNull()
+        ])
+    }
+
+    private func v2WorkspaceGitContextLaunchCodex(params: [String: Any]) -> V2CallResult {
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        let requestedWorkspaceId = v2UUID(params, "workspace_id")
+        var workspaceId: UUID?
+        var panelId: UUID?
+        v2MainSync {
+            workspaceId = requestedWorkspaceId ?? tabManager.selectedWorkspace?.id
+            if let workspaceId {
+                panelId = tabManager.launchCodexInGitContext(workspaceId: workspaceId)?.id
+            }
+        }
+        guard let workspaceId, let panelId else {
+            return .err(code: "not_found", message: "Workspace not found or has no focused pane", data: nil)
+        }
+        return .ok([
+            "workspace_id": workspaceId.uuidString,
+            "workspace_ref": v2Ref(kind: .workspace, uuid: workspaceId),
+            "panel_id": panelId.uuidString,
+            "surface_id": panelId.uuidString
+        ])
+    }
+
     private func v2WorkspaceClose(params: [String: Any]) -> V2CallResult {
         guard let tabManager = v2ResolveTabManager(params: params) else {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
